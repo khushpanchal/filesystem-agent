@@ -1,5 +1,9 @@
-/**
- * Fill in the agent by following the course instructions:
- * https://vercel.com/academy/filesystem-agents/agent-skeleton
- */
-export let agent: any;
+import { ToolLoopAgent } from 'ai';
+
+const MODEL = 'minimax/minimax-m3.1-flash';
+
+export const agent = new ToolLoopAgent({
+  model: MODEL,
+  instructions: '',
+  tools: {}
+});
