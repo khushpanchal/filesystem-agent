@@ -119,7 +119,7 @@ tool), so the server must receive the full history every time.
 | Text extractor | `lib/files/extract.ts` | ⬜ | F2-02, F2-03 |
 | File store | `lib/files/store.ts` | ⬜ | F2-04 |
 | Virtual FS | `lib/shell/vfs.ts` | ⬜ | T3-01 |
-| Shell executor | `lib/shell/executor.ts` (+ tests) | ⬜ | T3-02 – T3-04 |
+| Shell executor | `lib/shell/executor.ts` (+ tests) | ⬜ thin adapter over `just-bash` (D11) | T3-02 – T3-04 |
 | Tool-call view | `components/tool-call-view.tsx` | ⬜ | C6-02 |
 | Citations | `components/citation.tsx` | ⬜ | C6-03 |
 | Compaction | `lib/compact.ts` | ⬜ | C6-06 |
@@ -149,6 +149,7 @@ type-check against `ai@6`). Caret ranges (`^3.0.x`, `^2.0.x`) can't cross a majo
 | `@ai-sdk/react` | 3.0.318 | `useChat` in `app/form.tsx` |
 | `@ai-sdk/openai` / `anthropic` / `google` | 3.0.131 / 3.0.135 / 3.0.138 | model factory (M5-03) |
 | `@ai-sdk/openai-compatible` | 2.0.87 | Ollama, local only (M5-06) |
+| `just-bash` | 3.6.0 | shell executor, browser only, lazy-loaded (D11) |
 | `vitest` (dev) | 5.0.5 | executor tests (T3-04) |
 | `@vercel/sandbox` | 1.10.2 | 🗑 removed in W4-05 |
 
@@ -164,3 +165,4 @@ Node: `engines.node >=22` → Vercel resolves to 24.x; local dev runs 26.x.
 | P0-02 | Walked the request path `form.tsx → route.ts → agent.ts → tools.ts → Sandbox`; identified the three required changes (§1). |
 | P0-03 | Created this HLD and `docs/decisions.md`. |
 | P0-04 | Updated deps within range (deduped two `ai` copies → 6.0.315); added v6-line providers + vitest; `engines.node >=22`; `@types/node` 24. Refreshed the expired local OIDC token. Verified: `tsc` passes, `POST /api` answers end-to-end. |
+| S1-01 | Spike: `just-bash` in a client page ran `grep -rn hello /docs`, pipes and globs in headless Chrome; its chunks downloaded only on first Run; writes vanished with a per-command instance. Decision D11. Spike page deleted (code kept in git history). |

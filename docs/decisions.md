@@ -17,11 +17,13 @@
 | D9 | No accounts, no DB, no payments in MVP | Minimal scope | — | Accepted |
 | D10 | MVP providers stay as planned (Google, OpenAI, Anthropic, AI Gateway, Ollama-local); **OpenRouter deferred** to post-MVP | Keep the MVP simple. End users need only a provider API key, no Vercel account, **except AI Gateway**, which needs the user's own Vercel account + card → label it so in Settings. Default suggestion: Google AI Studio (free tier, no card) | OpenRouter now (`@openrouter/ai-sdk-provider@^2.10.0` for ai@6; 3.x needs ai@7) | Accepted (2026-10-24) |
 
+| D11 | Shell = **`just-bash@^3.6`** (Vercel Labs, Apache-2.0, beta). **New `Bash` instance per command**, **lazy-loaded** with `await import('just-bash')`, `executionLimitProfile: 'hardened'`. Build stays on **Turbopack** | Spike S1-01 ran in Chrome: `grep -rn`, `-i`, pipes, globs, quoted names with spaces, real exit codes (0/1/2/127); no network or real FS; runaway loops stopped. A fresh instance per call (~5 ms) makes writes vanish (its FS has no read-only mode). Lazy import keeps ~400 KB gzip out of the initial page load | Hand-written mini-shell (no pipes/globs, more code to test). Never `next build --webpack`: fails on `node:zlib` | Accepted (2026-10-24) |
+
 ## Pending decisions (resolved by spikes)
 
 | Spike | Question | Outcome |
 |---|---|---|
-| S1-01 | Shell executor: `just-bash` vs hand-written mini-shell (browser support, `grep -rni`/pipes, bundle size, license) | _pending_ |
+| S1-01 | Shell executor: `just-bash` vs hand-written mini-shell (browser support, `grep -rni`/pipes, bundle size, license) | **just-bash** → D11 |
 | S1-02 | AI SDK v6 client-side tool round trip: API names and how the route accepts full history | _pending_ |
 
 ## Cost model (who pays what)
