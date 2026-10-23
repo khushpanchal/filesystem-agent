@@ -1,168 +1,126 @@
-# High-Level Design — "Ask Your Docs"
+# How "Ask Your Docs" works
 
-> Living document. Updated after every piece of the migration (see `prd.md` §6).
-> Branch: `mvp` · Baseline tag: `course-complete` (`369bb58`)
+> Updated after every step. The plan is in `prd.md`; the reasons behind choices are in
+> `docs/decisions.md`.
+> Branch `mvp` · Course version saved as tag `course-complete`.
 
-**Legend:** ✅ built · 🔁 built, will change · 🗑 to be removed · ⬜ planned
-
----
-
-## 1. Current state (what runs today)
-
-The course app, unchanged. One HTTP request runs the **whole** agent loop on the server; the tool
-executes inside a Vercel Sandbox VM.
-
-```mermaid
-flowchart LR
-  F["app/form.tsx<br/>useChat (browser)"] -- "POST /api<br/>full messages" --> R["app/api/route.ts<br/>keeps LAST message only"]
-  R -- "agent.stream({ prompt })" --> A["lib/agent.ts<br/>module singleton ToolLoopAgent"]
-  A --> G[("AI Gateway<br/>minimax/minimax-m3.1-flash")]
-  A --> T["lib/tools.ts<br/>createBashTool(sandbox).execute"]
-  T -- "runCommand(cmd, args)<br/>no shell" --> SB[("Vercel Sandbox VM<br/>calls/*.md")]
-  R -. "SSE: UI message parts" .-> F
-
-  classDef change fill:#fff3cd,stroke:#b58900,color:#000
-  classDef remove fill:#f8d7da,stroke:#c0392b,color:#000
-  class F,R,A,T change
-  class G,SB remove
-```
-
-What the MVP must change (found in P0-02):
-1. `app/api/route.ts:11-19` — discards history, sends only the last message as `prompt` → **W4-01**.
-2. `lib/agent.ts:11-23` — module-level singleton (one sandbox + one fixed model for all users,
-   Node-only `fs`/`path`) → **W4-05, M5-04**.
-3. `lib/tools.ts:15-24` — tool `execute` runs on the server → **W4-02, W4-03**.
+**Status:** ✅ done · 🔁 exists, will change · 🗑 will be removed · ⬜ not built yet
 
 ---
 
-## 2. Target state (MVP)
+## 1. Today: the course app (still running)
 
 ```mermaid
 flowchart LR
-  subgraph Browser
-    UI["Chat UI + Files panel + Settings"]
-    EX["Text Extractor<br/>txt/md/csv/json/log/pdf"]
-    ST[("IndexedDB<br/>files as text")]
-    LS[("localStorage<br/>provider, key, model")]
-    VFS["Virtual FS<br/>Map path→text"]
-    SH["Shell Executor<br/>ls cat grep head tail wc"]
-  end
-  subgraph Vercel["Vercel Function (stateless)"]
-    RT["app/api/route.ts"]
-    MF["Model Factory"]
-    AF["Agent Factory<br/>ToolLoopAgent"]
-    TS["Tool Schema<br/>bashTool, no execute"]
-  end
-  P[("Model Provider<br/>OpenAI / Anthropic / Google / AI Gateway / Ollama-local")]
-
-  UI --> EX --> ST
-  UI --> LS
-  ST --> VFS --> SH
-  UI -- "full messages + key headers" --> RT
-  RT --> MF --> P
-  RT --> AF --> TS
-  AF -- "tool call" --> UI
-  UI -- runs --> SH
-  SH -- "tool output" --> UI
+  F["Chat page<br/>app/form.tsx"] -- "question" --> R["Server<br/>app/api/route.ts"]
+  R --> A["Agent<br/>lib/agent.ts"]
+  A <--> G[("AI Gateway<br/>our key")]
+  A --> T["bash tool<br/>lib/tools.ts"]
+  T --> SB[("Vercel Sandbox<br/>a Linux VM holding lib/calls/*.md")]
 ```
 
-### 2.1 Sequence: one question
+- The whole back-and-forth (AI → command → AI) happens **on the server** in one request.
+- What has to change:
+  1. The server only reads the **last** message, so follow-up questions don't work.
+  2. The agent and sandbox are created **once and shared** by everyone, with one fixed model.
+  3. Commands run in a **sandbox on the server**, but the files will be in the browser.
+
+---
+
+## 2. Target: the MVP
+
+```mermaid
+flowchart LR
+  subgraph Browser["User's browser"]
+    UI["Chat page"]
+    FILES[("Saved files")]
+    KEY[("Saved API key")]
+    SH["Mini bash<br/>(just-bash)"]
+  end
+  SV["Our server<br/>app/api/route.ts"]
+  AI[("AI provider<br/>Google / OpenAI / Anthropic")]
+
+  UI -- "chat + key (no files)" --> SV
+  SV <--> AI
+  SV -- "run this command" --> UI
+  UI --> SH
+  FILES --> SH
+  SH -- "output" --> UI
+```
+
+### One question, step by step
 
 ```mermaid
 sequenceDiagram
-  participant U as User
-  participant B as Browser (useChat)
-  participant S as app/api/route.ts
-  participant M as Model
-  U->>B: "Did anyone mention pricing?"
-  B->>S: POST full messages (+ x-provider, x-api-key, x-model)
-  S->>M: instructions + messages + bashTool schema
-  M-->>S: tool call bashTool{command:"grep -rni pricing /docs"}
-  S-->>B: stream tool call (no server execute)
-  B->>B: Shell Executor runs grep on Virtual FS
-  B->>S: POST messages + tool output (auto-resubmit)
-  S->>M: ...+ tool result
-  M-->>S: final text with [file:line] citations
-  S-->>B: stream answer
-  B-->>U: answer + visible tool calls + citation chips
+  participant B as Browser
+  participant S as Our server
+  participant M as AI
+  B->>S: chat so far + key
+  S->>M: instructions + chat + "you have a bashTool"
+  M-->>S: run `grep -rn pricing /docs`
+  S-->>B: run this command please
+  B->>B: mini bash runs grep on the saved files
+  B->>S: chat so far + the grep output
+  S->>M: same, plus the output
+  M-->>S: answer
+  S-->>B: answer (shown with the commands used)
 ```
 
-Key shift from today: **each tool round trip is a new HTTP request** (the browser executes the
-tool), so the server must receive the full history every time.
-
-### 2.2 Contracts
-- **Request** `POST /api`
-  - Headers: `x-provider` (`gateway|openai|anthropic|google|ollama`), `x-api-key`, `x-model`
-  - Body: `{ messages: UIMessage[] }` — full history, **no file contents**
-- **Tool `bashTool`** input `{ command: string }` →
-  output `{ stdout: string, stderr: string, exitCode: number, truncated: boolean }`
-- **StoredFile** (IndexedDB): `{ id, name, path: "/docs/<name>.txt", mime, sizeBytes, text, pageCount?, addedAt }`
-- **Settings** (localStorage): `{ provider, apiKey, modelId }`
+Each command = one more request from the browser. So the browser must send the **whole chat**
+every time, and the server keeps no memory between requests.
 
 ---
 
-## 3. Component status
+## 3. Parts
 
-| Component | File | Status | Piece |
+| Part | File | Status | Step |
 |---|---|---|---|
-| Chat UI | `app/form.tsx` | 🔁 single-turn, server tool | W4-03, C6-01, C6-02 |
-| Page layout | `app/page.tsx` | 🔁 renders `<Form />` only | F2-01 |
-| API route | `app/api/route.ts` | 🔁 last message only | W4-01, M5-05 |
-| Agent | `lib/agent.ts` | 🔁 module singleton | W4-05, M5-04 |
-| Tool | `lib/tools.ts` | 🔁 server `execute` via sandbox | W4-02 |
-| Vercel Sandbox | `@vercel/sandbox` | 🗑 | W4-05 |
-| Call transcripts | `lib/calls/*.md` | 🔁 move to `samples/` | F2-07 |
-| Instructions | `lib/instructions.ts` | ⬜ | W4-04 |
-| Model factory | `lib/models.ts` | ⬜ | M5-03 |
-| Settings | `lib/settings.ts`, `components/settings-dialog.tsx` | ⬜ | M5-01, M5-02 |
-| Files panel | `components/files-panel.tsx` | ⬜ | F2-01, F2-05 |
-| Text extractor | `lib/files/extract.ts` | ⬜ | F2-02, F2-03 |
-| File store | `lib/files/store.ts` | ⬜ | F2-04 |
-| Virtual FS | `lib/shell/vfs.ts` | ⬜ | T3-01 |
-| Shell executor | `lib/shell/executor.ts` (+ tests) | ⬜ thin adapter over `just-bash` (D11) | T3-02 – T3-04 |
-| Tool-call view | `components/tool-call-view.tsx` | ⬜ | C6-02 |
-| Citations | `components/citation.tsx` | ⬜ | C6-03 |
-| Compaction | `lib/compact.ts` | ⬜ | C6-06 |
+| Chat page | `app/form.tsx` | 🔁 one question only, shows server commands | 7, 11 |
+| Page layout | `app/page.tsx` | 🔁 chat only | 1 |
+| Server route | `app/api/route.ts` | 🔁 reads only the last message | 5, 10 |
+| Agent | `lib/agent.ts` | 🔁 created once, shared, uses sandbox | 8, 10 |
+| bash tool | `lib/tools.ts` | 🔁 runs on the server | 6 |
+| Sandbox | `@vercel/sandbox` | 🗑 | 8 |
+| Course transcripts | `lib/calls/*.md` | 🔁 become sample files | 3, 8 |
+| Files panel | `components/files-panel.tsx` | ⬜ | 1 |
+| Saved files | `lib/files.ts` | ⬜ | 2 |
+| Mini bash | `lib/shell.ts` (+ tests) | ⬜ | 4 |
+| AI instructions | `lib/instructions.ts` | ⬜ | 6 |
+| Settings box | `components/settings-dialog.tsx`, `lib/settings.ts` | ⬜ | 9 |
+| Model picker | `lib/models.ts` | ⬜ | 10 |
 
 ---
 
-## 4. Deployment
+## 4. Packages
 
-| Branch | Vercel environment | URL |
-|---|---|---|
-| `mvp` | Preview | https://filesystem-agent-git-mvp-kodent-labs.vercel.app (latest commit on `mvp`) |
-| `main` | Preview ⚠ | Project's production branch is still set to `master`; until changed, `main` pushes deploy as Preview. Fix before D8-05. |
-
-Auth on Vercel today: AI Gateway and Sandbox both use the auto-injected OIDC token; no project
-env vars are set. `.env.local` is for local `pnpm dev` only.
-
----
-
-## 5. Dependencies
-
-AI SDK packages are pinned to the **`ai-v6` dist-tag line** (`latest` is AI SDK 7 and would not
-type-check against `ai@6`). Caret ranges (`^3.0.x`, `^2.0.x`) can't cross a major, so they stay on v6.
-
-| Package | Version | Used by |
-|---|---|---|
-| `ai` | 6.0.315 (single copy) | agent, route, `createGateway` (re-exported, so no separate `@ai-sdk/gateway`) |
-| `@ai-sdk/react` | 3.0.318 | `useChat` in `app/form.tsx` |
-| `@ai-sdk/openai` / `anthropic` / `google` | 3.0.131 / 3.0.135 / 3.0.138 | model factory (M5-03) |
-| `@ai-sdk/openai-compatible` | 2.0.87 | Ollama, local only (M5-06) |
-| `just-bash` | 3.6.0 | shell executor, browser only, lazy-loaded (D11) |
-| `vitest` (dev) | 5.0.5 | executor tests (T3-04) |
-| `@vercel/sandbox` | 1.10.2 | 🗑 removed in W4-05 |
-
-Node: `engines.node >=22` → Vercel resolves to 24.x; local dev runs 26.x.
-
----
-
-## 6. Changelog
-
-| Piece | Change |
+| Package | Why |
 |---|---|
-| P0-01 | Tagged `course-complete` at `369bb58`; created `mvp` branch; first preview deployed (`be41dde`). |
-| P0-02 | Walked the request path `form.tsx → route.ts → agent.ts → tools.ts → Sandbox`; identified the three required changes (§1). |
-| P0-03 | Created this HLD and `docs/decisions.md`. |
-| P0-04 | Updated deps within range (deduped two `ai` copies → 6.0.315); added v6-line providers + vitest; `engines.node >=22`; `@types/node` 24. Refreshed the expired local OIDC token. Verified: `tsc` passes, `POST /api` answers end-to-end. |
-| S1-01 | Spike: `just-bash` in a client page ran `grep -rn hello /docs`, pipes and globs in headless Chrome; its chunks downloaded only on first Run; writes vanished with a per-command instance. Decision D11. Spike page deleted (code kept in git history). |
+| `ai` 6.0.315, `@ai-sdk/react` 3.0.318 | agent + chat. We stay on **v6**: add AI SDK packages with `@ai-v6`, not plain `pnpm add` |
+| `@ai-sdk/google`, `@ai-sdk/openai`, `@ai-sdk/anthropic` | talk to the user's chosen provider (Step 10) |
+| `just-bash` 3.6.0 | the mini bash in the browser (Step 4) |
+| `vitest` | tests (Step 4) |
+| `@vercel/sandbox`, `@ai-sdk/openai-compatible` | 🗑 removed in Step 8 |
+
+Node: `>=22` in `package.json`. Vercel uses 24, your laptop runs 26.
+
+---
+
+## 5. Where it runs
+
+| Branch | Vercel | URL |
+|---|---|---|
+| `mvp` | Preview | https://filesystem-agent-git-mvp-kodent-labs.vercel.app |
+| `main` | Preview for now | Vercel's production branch is still `master`. Fix it in Step 12. |
+
+---
+
+## 6. Log
+
+| Step | What happened |
+|---|---|
+| 0 | Tagged `course-complete`, made branch `mvp`, first preview deploy. |
+| 0 | Read through the code; found the 3 things to change (§1). Wrote these docs. |
+| 0 | Packages updated (one copy of `ai`, v6 providers, vitest, Node `>=22`). Refreshed the expired local OIDC token. |
+| 0 | Spike 1: `just-bash` ran `grep -rn hello /docs`, pipes and globs in Chrome. It only downloads on first use, and a fresh copy per command throws away any writes. |
+| 0 | Spike 2: a tool with no `execute`; the browser answered it (`onToolCall` → `addToolOutput`) and resent the chat (`sendAutomaticallyWhen`). 2 requests in total; the AI used the browser's answer. |
+| 0 | Plan simplified: text files only, files saved in the browser, user's own key (Google / OpenAI / Anthropic). |

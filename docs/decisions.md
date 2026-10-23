@@ -1,41 +1,36 @@
-# Decision Log — "Ask Your Docs"
+# Decisions
 
-> Append-only. Each decision records what, why, and what was rejected. Spikes (S1-xx) add their
-> outcome here. Superseded decisions stay, marked **Superseded by Dx**.
+> Why things are the way they are. New decisions are added at the bottom; old ones are kept and
+> marked **Replaced by Dx** instead of deleted.
 
-| # | Decision | Why | Rejected alternative | Status |
-|---|---|---|---|---|
-| D0 | **Extend this repo**, migrate incrementally on an `mvp` branch; tag the course version (`course-complete`) | Reuse working pieces (chat UI, route, agent, tool schema); Vercel preview deployments per push while `main` stays the course app | New project from scratch | Accepted (P0-01 done) |
-| D1 | **BYOK**: the user supplies the model API key | User pays tokens; hosting pays $0 for models | Our own key | Accepted |
-| D2 | **Remove Vercel Sandbox** | Hobby quota: 5,000 sandbox creations/month ≈ 166/day; 50 daily users would exhaust it | Sandbox per session | Accepted |
-| D3 | **Files stay in the browser** (IndexedDB) | Upload once, persists across reloads; privacy; no storage cost | Upload to server / Vercel Blob | Accepted |
-| D4 | **Client-side tool execution**: loop on server, `bashTool` runs in browser | Files never sent to server; no 4.5 MB request-body cap; tiny requests | Re-send all files every message | Accepted |
-| D5 | **Stateless server**, agent built **per request** via `createAgent()` | Functions don't keep memory between requests; avoids the course's module-singleton issues | Module-level `export const agent` | Accepted |
-| D6 | Agent, tool schema and shell code are **portable** (no `node:*`/server-only APIs) | Scale path: move the whole loop into the browser later | — | Accepted |
-| D7 | Tool input = **single `command` string** | Course's `command` + `args[]` split confused the model (pipes/globs/quoting); we own the parser now | `command` + `args` | Accepted |
-| D8 | **Ollama only in local/self-host mode** | Hosted server can't reach the user's `localhost:11434` | Ollama on hosted app | Accepted |
-| D9 | No accounts, no DB, no payments in MVP | Minimal scope | — | Accepted |
-| D10 | MVP providers stay as planned (Google, OpenAI, Anthropic, AI Gateway, Ollama-local); **OpenRouter deferred** to post-MVP | Keep the MVP simple. End users need only a provider API key, no Vercel account, **except AI Gateway**, which needs the user's own Vercel account + card → label it so in Settings. Default suggestion: Google AI Studio (free tier, no card) | OpenRouter now (`@openrouter/ai-sdk-provider@^2.10.0` for ai@6; 3.x needs ai@7) | Accepted (2026-10-24) |
+| # | Decision | Why | What we didn't do |
+|---|---|---|---|
+| D0 | Grow this repo on a branch `mvp`; save the course version as tag `course-complete` | Reuse the chat, route, agent and tool that already work; every push to `mvp` gets its own preview URL | Start a new project |
+| D1 | The user brings their **own API key** | They pay for their AI use; we pay nothing for models | Use our key for everyone |
+| D2 | **Remove the Vercel Sandbox** | The free plan allows ~5,000 sandboxes a month; a few dozen users would use that up | One sandbox per user |
+| D3 | **Files stay in the user's browser** (saved with IndexedDB) | Private; still there after a reload; no storage cost | Upload files to our server |
+| D4 | The AI loop runs on our server, but the **bash tool runs in the browser** | Files never leave the browser; requests stay tiny | Send all files with every message |
+| D5 | The server keeps **no memory**; a new agent is made for each request | Server functions don't keep memory between requests anyway; avoids the course's shared global | One shared agent for everyone |
+| D6 | Agent, tool and shell code use **no server-only APIs** (`fs`, `node:*`) | Lets us move everything into the browser later | — |
+| D7 | The tool takes **one `command` string** | The course's `command` + `args` split confused the AI (pipes, `*.md`); we saw it fail again on 2026-10-24 | `command` + `args[]` |
+| D8 | Ollama only when running locally. **Replaced by D13** | Our hosted server can't reach a user's laptop | — |
+| D9 | No accounts, database or payments | Keep it small | — |
+| D10 | OpenRouter left out; kept Google, OpenAI, Anthropic, AI Gateway, Ollama. **Partly replaced by D13** | Keep it small. Users only need a provider key, no Vercel account (AI Gateway is the exception) | OpenRouter now (it would need `@openrouter/ai-sdk-provider@^2.10.0` for our AI SDK v6) |
+| D11 | The mini bash is **`just-bash`** (Vercel Labs, Apache-2.0, beta). Loaded only when first needed; a **new copy for every command**; strict limits on | Spike 1 in Chrome: `grep -rn`/`-i`, pipes, `*.txt`, names with spaces, real exit codes (0, 1, 2, 127) all worked; no network and no real disk. A fresh copy (~5 ms) throws away anything a command writes. Loading it late keeps ~400 KB out of the first page load | Write our own small shell (no pipes, more to test). Never build with `--webpack` (breaks on `node:zlib`) |
+| D12 | The browser answers tools with **`onToolCall` → `addToolOutput`** (not awaited), resends with **`sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls`**; the server uses **`createAgentUIStreamResponse({ agent, uiMessages })`** | Spike 2: the tool had no `execute`, the browser returned `zebra-4417`, and the AI repeated it. It took 2 requests (1 message, then 2). `addToolResult` still exists but is deprecated | Converting messages by hand with `convertToModelMessages` |
+| D13 | **Simpler MVP:** text files only (`.txt .md .csv .json`); providers are **Google, OpenAI, Anthropic** only | It's an MVP for our own testing. AI Gateway would make every tester create a Vercel account; Ollama only works on one laptop; PDF needs a big library. All moved to "later" | PDF now; AI Gateway / Ollama in Settings |
 
-| D11 | Shell = **`just-bash@^3.6`** (Vercel Labs, Apache-2.0, beta). **New `Bash` instance per command**, **lazy-loaded** with `await import('just-bash')`, `executionLimitProfile: 'hardened'`. Build stays on **Turbopack** | Spike S1-01 ran in Chrome: `grep -rn`, `-i`, pipes, globs, quoted names with spaces, real exit codes (0/1/2/127); no network or real FS; runaway loops stopped. A fresh instance per call (~5 ms) makes writes vanish (its FS has no read-only mode). Lazy import keeps ~400 KB gzip out of the initial page load | Hand-written mini-shell (no pipes/globs, more code to test). Never `next build --webpack`: fails on `node:zlib` | Accepted (2026-10-24) |
+## Spikes
 
-## Pending decisions (resolved by spikes)
-
-| Spike | Question | Outcome |
+| Spike | Question | Answer |
 |---|---|---|
-| S1-01 | Shell executor: `just-bash` vs hand-written mini-shell (browser support, `grep -rni`/pipes, bundle size, license) | **just-bash** → D11 |
-| S1-02 | AI SDK v6 client-side tool round trip: API names and how the route accepts full history | _pending_ |
+| 1 | Can a bash run in the browser over files held in memory? | Yes, with `just-bash` → D11 |
+| 2 | Can the AI ask for a tool that the browser runs? | Yes → D12 |
 
-## Cost model (who pays what)
+## Who pays for what
 
-| Item | Paid by | Our cost |
-|---|---|---|
-| Model tokens | user's API key | $0 |
-| File storage + grep execution | user's browser | $0 |
-| Static pages/JS (CDN) | us (Vercel) | ~$0 on Hobby |
-| Agent loop function (`app/api/route.ts`) | us (Vercel) | only scaling cost; Hobby fits ~50 daily users |
-| Domain (optional) | us | ~$10–15/yr |
-
-Vercel **Hobby is non-commercial**; move to **Pro** when commercial or near limits. At very high
-concurrency the server loop (functions held open while streaming) becomes the cost → scale path:
-move the loop into the browser (D6).
+| Thing | Paid by |
+|---|---|
+| AI use | the user's API key |
+| Storing files, running commands | the user's browser |
+| Hosting the page and the server route | us, on Vercel's free plan (fine for testing; the free plan is non-commercial) |
