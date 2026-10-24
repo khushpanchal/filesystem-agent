@@ -76,13 +76,13 @@ every time, and the server keeps no memory between requests.
 | Part | File | Status | Step |
 |---|---|---|---|
 | Chat page | `app/form.tsx` | 🔁 one question only, shows server commands | 7, 11 |
-| Page layout | `app/page.tsx` | 🔁 chat only | 1 |
+| Page layout | `app/page.tsx` | ✅ files panel on the left, chat on the right | 1 |
 | Server route | `app/api/route.ts` | 🔁 reads only the last message | 5, 10 |
 | Agent | `lib/agent.ts` | 🔁 created once, shared, uses sandbox | 8, 10 |
 | bash tool | `lib/tools.ts` | 🔁 runs on the server | 6 |
 | Sandbox | `@vercel/sandbox` | 🗑 | 8 |
 | Course transcripts | `lib/calls/*.md` | 🔁 become sample files | 3, 8 |
-| Files panel | `components/files-panel.tsx` | ⬜ | 1 |
+| Files panel | `components/files-panel.tsx` | ✅ pick or drop files, lists name + size (held in memory only, lost on reload) | 1, 2 |
 | Saved files | `lib/files.ts` | ⬜ | 2 |
 | Mini bash | `lib/shell.ts` (+ tests) | ⬜ | 4 |
 | AI instructions | `lib/instructions.ts` | ⬜ | 6 |
@@ -124,3 +124,4 @@ Node: `>=22` in `package.json`. Vercel uses 24, your laptop runs 26.
 | 0 | Spike 1: `just-bash` ran `grep -rn hello /docs`, pipes and globs in Chrome. It only downloads on first use, and a fresh copy per command throws away any writes. |
 | 0 | Spike 2: a tool with no `execute`; the browser answered it (`onToolCall` → `addToolOutput`) and resent the chat (`sendAutomaticallyWhen`). 2 requests in total; the AI used the browser's answer. |
 | 0 | Plan simplified: text files only, files saved in the browser, user's own key (Google / OpenAI / Anthropic). |
+| 1 | Files panel added beside the chat. Picking or dropping files reads their text (`file.text()`) into React state as `{ name, size, text }`. Not saved yet, and not connected to the chat. |
