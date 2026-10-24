@@ -81,7 +81,8 @@ every time, and the server keeps no memory between requests.
 | Agent | `lib/agent.ts` | 🔁 created once, shared, uses sandbox | 8, 10 |
 | bash tool | `lib/tools.ts` | 🔁 runs on the server | 6 |
 | Sandbox | `@vercel/sandbox` | 🗑 | 8 |
-| Course transcripts | `lib/calls/*.md` | 🔁 become sample files | 3, 8 |
+| Course transcripts | `lib/calls/*.md` | 🗑 still used by the server sandbox until Step 8 | 8 |
+| Sample files | `public/samples/call-*.md` | ✅ copies of the 3 transcripts with clear names; "Load sample files" button in the panel | 3 |
 | Files panel | `components/files-panel.tsx` | ✅ pick or drop files, list name + size, × remove, Clear all, red error messages. Loads saved files on open | 1, 2 |
 | Saved files | `lib/files.ts` | ✅ `listFiles` / `addFile` / `removeFile` / `clearFiles` over IndexedDB (`idb-keyval`, database `ask-your-docs`, store `files`, key = file name). Rules: 4 types, 20 files, 1 MB, `notes (2).md` | 2 |
 | Mini bash | `lib/shell.ts` (+ tests) | ⬜ | 4 |
@@ -127,3 +128,4 @@ Node: `>=22` in `package.json`. Vercel uses 24, your laptop runs 26.
 | 0 | Plan simplified: text files only, files saved in the browser, user's own key (Google / OpenAI / Anthropic). |
 | 1 | Files panel added beside the chat. Picking or dropping files reads their text (`file.text()`) into React state as `{ name, size, text }`. Not saved yet, and not connected to the chat. |
 | 2 | Files saved in IndexedDB through `lib/files.ts`; the panel re-reads the saved list after every change. Tested in Chrome: survives reload, duplicate → `notes (2).md`, `.pdf` and >1 MB refused, 21st file refused, remove and clear stick after reload. |
+| 3 | Transcripts copied to `public/samples/` as `call-1-platform-review.md`, `call-2-follow-up-review.md`, `call-3-commercial-alignment.md`. The button fetches the missing ones, wraps them as `File`s and adds them like a user pick. It hides once all 3 are saved, so no copies. |
