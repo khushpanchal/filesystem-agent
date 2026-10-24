@@ -85,7 +85,7 @@ every time, and the server keeps no memory between requests.
 | Sample files | `public/samples/call-*.md` | ✅ copies of the 3 transcripts with clear names; "Load sample files" button in the panel | 3 |
 | Files panel | `components/files-panel.tsx` | ✅ pick or drop files, list name + size, × remove, Clear all, red error messages. Loads saved files on open | 1, 2 |
 | Saved files | `lib/files.ts` | ✅ `listFiles` / `addFile` / `removeFile` / `clearFiles` over IndexedDB (`idb-keyval`, database `ask-your-docs`, store `files`, key = file name). Rules: 4 types, 20 files, 1 MB, `notes (2).md` | 2 |
-| Mini bash | `lib/shell.ts` (+ tests) | ⬜ | 4 |
+| Mini bash | `lib/shell.ts` (+ `lib/shell.test.ts`) | ✅ `runCommand(command, files) → { stdout, stderr, exitCode, truncated }`. Loads `just-bash` on first use, new `Bash` per command, `cwd /docs`, hardened limits, output cut at 8,000 characters, never throws. Not used by the UI yet | 4, 7 |
 | AI instructions | `lib/instructions.ts` | ⬜ | 6 |
 | Settings box | `components/settings-dialog.tsx`, `lib/settings.ts` | ⬜ | 9 |
 | Model picker | `lib/models.ts` | ⬜ | 10 |
@@ -100,7 +100,7 @@ every time, and the server keeps no memory between requests.
 | `@ai-sdk/google`, `@ai-sdk/openai`, `@ai-sdk/anthropic` | talk to the user's chosen provider (Step 10) |
 | `just-bash` 3.6.0 | the mini bash in the browser (Step 4) |
 | `idb-keyval` 6.3.0 | saves files in the browser's IndexedDB (Step 2). Tiny, Apache-2.0; opens the database lazily, so it's safe on the server |
-| `vitest` | tests (Step 4) |
+| `vitest` | tests: `pnpm test` runs `vitest run` (Step 4) |
 | `@vercel/sandbox`, `@ai-sdk/openai-compatible` | 🗑 removed in Step 8 |
 
 Node: `>=22` in `package.json`. Vercel uses 24, your laptop runs 26.
@@ -129,3 +129,4 @@ Node: `>=22` in `package.json`. Vercel uses 24, your laptop runs 26.
 | 1 | Files panel added beside the chat. Picking or dropping files reads their text (`file.text()`) into React state as `{ name, size, text }`. Not saved yet, and not connected to the chat. |
 | 2 | Files saved in IndexedDB through `lib/files.ts`; the panel re-reads the saved list after every change. Tested in Chrome: survives reload, duplicate → `notes (2).md`, `.pdf` and >1 MB refused, 21st file refused, remove and clear stick after reload. |
 | 3 | Transcripts copied to `public/samples/` as `call-1-platform-review.md`, `call-2-follow-up-review.md`, `call-3-commercial-alignment.md`. The button fetches the missing ones, wraps them as `File`s and adds them like a user pick. It hides once all 3 are saved, so no copies. |
+| 4 | `lib/shell.ts` added, with 9 vitest tests (`pnpm test`): grep with line numbers, `-i`, pipes, names with spaces, exit codes 0/1/127, no network (`curl` doesn't exist), writes thrown away, 8,000-character cut, no files. |
