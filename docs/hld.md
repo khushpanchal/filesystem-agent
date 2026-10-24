@@ -21,7 +21,7 @@ flowchart LR
 
 - The whole back-and-forth (AI → command → AI) happens **on the server** in one request.
 - What has to change:
-  1. The server only reads the **last** message, so follow-up questions don't work.
+  1. ~~The server only reads the **last** message, so follow-up questions don't work.~~ Fixed in Step 5.
   2. The agent and sandbox are created **once and shared** by everyone, with one fixed model.
   3. Commands run in a **sandbox on the server**, but the files will be in the browser.
 
@@ -75,9 +75,9 @@ every time, and the server keeps no memory between requests.
 
 | Part | File | Status | Step |
 |---|---|---|---|
-| Chat page | `app/form.tsx` | 🔁 one question only, shows server commands | 7, 11 |
+| Chat page | `app/form.tsx` | 🔁 input always shown (follow-ups), shows errors in red; still shows server commands | 7, 11 |
 | Page layout | `app/page.tsx` | ✅ files panel on the left, chat on the right | 1 |
-| Server route | `app/api/route.ts` | 🔁 reads only the last message | 5, 10 |
+| Server route | `app/api/route.ts` | 🔁 `createAgentUIStreamResponse({ agent, uiMessages: messages })`: the whole chat goes to the agent. `onError` logs only `error.message`. Still uses our shared agent and key | 5 ✅, 10 |
 | Agent | `lib/agent.ts` | 🔁 created once, shared, uses sandbox | 8, 10 |
 | bash tool | `lib/tools.ts` | 🔁 runs on the server | 6 |
 | Sandbox | `@vercel/sandbox` | 🗑 | 8 |
@@ -130,3 +130,5 @@ Node: `>=22` in `package.json`. Vercel uses 24, your laptop runs 26.
 | 2 | Files saved in IndexedDB through `lib/files.ts`; the panel re-reads the saved list after every change. Tested in Chrome: survives reload, duplicate → `notes (2).md`, `.pdf` and >1 MB refused, 21st file refused, remove and clear stick after reload. |
 | 3 | Transcripts copied to `public/samples/` as `call-1-platform-review.md`, `call-2-follow-up-review.md`, `call-3-commercial-alignment.md`. The button fetches the missing ones, wraps them as `File`s and adds them like a user pick. It hides once all 3 are saved, so no copies. |
 | 4 | `lib/shell.ts` added, with 9 vitest tests (`pnpm test`): grep with line numbers, `-i`, pipes, names with spaces, exit codes 0/1/127, no network (`curl` doesn't exist), writes thrown away, 8,000-character cut, no files. |
+| 5 | The route sends the whole chat to the agent (`createAgentUIStreamResponse`); the input stays visible. Tested in Chrome: the 2nd request carried `user,assistant,user`, and "how many calls did we have with **them**" was answered as Northstar Commerce (3 calls). Old tool still sends bad commands (D7, 400s from the sandbox) until Step 6. Refreshed the local OIDC token. |
+| 5 | Fix: "hi" ran 19 commands and read every file, because the course instructions said to always use `bashTool`. The instructions in `lib/agent.ts` now say: use the tool only when the message needs the files, reply to small talk without tools, and start with one targeted search. Retested: "hi" and "thanks!" use 0 commands. |

@@ -6,7 +6,7 @@ import { DefaultChatTransport } from 'ai';
 
 export function Form() {
   const [input, setInput] = useState('');
-  const { messages, sendMessage, status } = useChat({
+  const { messages, sendMessage, status, error } = useChat({
     transport: new DefaultChatTransport({ api: '/api' })
   });
 
@@ -87,26 +87,27 @@ export function Form() {
           {status === 'streaming' && (
             <div className="text-xs text-zinc-400">streaming...</div>
           )}
+
+          {error && <div className="text-red-600">{error.message}</div>}
         </div>
 
-        {messages.length === 0 && (
-          <form onSubmit={handleSubmit} className="flex gap-2 font-mono">
-            <input
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="Ask something..."
-              className="flex-1 border px-4 py-2"
-            />
-            <button
-              type="submit"
-              disabled={status === 'streaming'}
-              className="bg-black px-4 py-2 text-white disabled:opacity-50"
-            >
-              Send
-            </button>
-          </form>
-        )}
+        {/* Always shown, so follow-up questions can be asked */}
+        <form onSubmit={handleSubmit} className="flex gap-2 font-mono">
+          <input
+            type="text"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="Ask something..."
+            className="flex-1 border px-4 py-2"
+          />
+          <button
+            type="submit"
+            disabled={status === 'submitted' || status === 'streaming'}
+            className="bg-black px-4 py-2 text-white disabled:opacity-50"
+          >
+            Send
+          </button>
+        </form>
       </main>
     </div>
   );

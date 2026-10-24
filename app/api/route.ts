@@ -1,46 +1,17 @@
 import { agent } from '@/lib/agent';
-import {
-  UIMessage,
-  createUIMessageStream,
-  createUIMessageStreamResponse
-} from 'ai';
+import { UIMessage, createAgentUIStreamResponse } from 'ai';
 
 export async function POST(request: Request) {
   const { messages }: { messages: UIMessage[] } = await request.json();
 
-  // Extract the last user message as the prompt
-  const lastMessage = messages[messages.length - 1];
-  const prompt =
-    lastMessage?.parts
-      ?.filter(
-        (part): part is { type: 'text'; text: string } => part.type === 'text'
-      )
-      .map((part) => part.text)
-      .join('\n') || '';
-
-  return createUIMessageStreamResponse({
-    stream: createUIMessageStream({
-      async execute({ writer }) {
-        try {
-          const stream = await agent.stream({ prompt });
-          writer.merge(stream.toUIMessageStream());
-        } catch (error) {
-          console.error('Agent error:', error);
-          writer.write({
-            type: 'text-start',
-            id: 'error'
-          });
-          writer.write({
-            type: 'text-delta',
-            id: 'error',
-            delta: 'An error occurred. Please try again.'
-          });
-          writer.write({
-            type: 'text-end',
-            id: 'error'
-          });
-        }
-      }
-    })
+  // The whole chat goes to the agent, so follow-up questions have context
+  return createAgentUIStreamResponse({
+    agent,
+    uiMessages: messages,
+    onError: (error) => {
+      // Message only: the full error object can include the request body
+      console.error('Agent error:', (error as Error).message);
+      return 'An error occurred. Please try again.';
+    }
   });
 }
