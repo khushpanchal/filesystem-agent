@@ -23,7 +23,7 @@ flowchart LR
 - What has to change:
   1. ~~The server only reads the **last** message, so follow-up questions don't work.~~ Fixed in Step 5.
   2. The agent and sandbox are created **once and shared** by everyone, with one fixed model.
-  3. Commands run in a **sandbox on the server**, but the files will be in the browser.
+  3. ~~Commands run in a **sandbox on the server**, but the files will be in the browser.~~ Fixed in Steps 6–7 (the sandbox code itself goes in Step 8).
 
 ---
 
@@ -75,18 +75,18 @@ every time, and the server keeps no memory between requests.
 
 | Part | File | Status | Step |
 |---|---|---|---|
-| Chat page | `app/form.tsx` | 🔁 input always shown (follow-ups), shows errors in red; still shows server commands | 7, 11 |
+| Chat page | `app/form.tsx` | ✅ runs the AI's commands in the browser: `onToolCall` → `runCommand(command, await listFiles())` → `addToolOutput`, resends with `sendAutomaticallyWhen`. Max 10 commands per answer (counter in a `useRef`). Shows `$ command` + output, tool errors in red. 🔁 polish in Step 11 | 5, 7, 11 |
 | Page layout | `app/page.tsx` | ✅ files panel on the left, chat on the right | 1 |
 | Server route | `app/api/route.ts` | 🔁 `createAgentUIStreamResponse({ agent, uiMessages: messages })`: the whole chat goes to the agent. `onError` logs only `error.message`. Still uses our shared agent and key | 5 ✅, 10 |
-| Agent | `lib/agent.ts` | 🔁 created once, shared, uses sandbox | 8, 10 |
-| bash tool | `lib/tools.ts` | 🔁 runs on the server | 6 |
+| Agent | `lib/agent.ts` | 🔁 uses `INSTRUCTIONS` + `bashTool`; still created once and shared. Unused sandbox code still runs at startup | 8, 10 |
+| bash tool | `lib/tools.ts` | ✅ `bashTool`: input `{ command: string }` (one full command line, D7), **no `execute`**, so the agent loop stops and the browser runs it | 6 |
 | Sandbox | `@vercel/sandbox` | 🗑 | 8 |
 | Course transcripts | `lib/calls/*.md` | 🗑 still used by the server sandbox until Step 8 | 8 |
 | Sample files | `public/samples/call-*.md` | ✅ copies of the 3 transcripts with clear names; "Load sample files" button in the panel | 3 |
 | Files panel | `components/files-panel.tsx` | ✅ pick or drop files, list name + size, × remove, Clear all, red error messages. Loads saved files on open | 1, 2 |
 | Saved files | `lib/files.ts` | ✅ `listFiles` / `addFile` / `removeFile` / `clearFiles` over IndexedDB (`idb-keyval`, database `ask-your-docs`, store `files`, key = file name). Rules: 4 types, 20 files, 1 MB, `notes (2).md` | 2 |
 | Mini bash | `lib/shell.ts` (+ `lib/shell.test.ts`) | ✅ `runCommand(command, files) → { stdout, stderr, exitCode, truncated }`. Loads `just-bash` on first use, new `Bash` per command, `cwd /docs`, hardened limits, output cut at 8,000 characters, never throws. Not used by the UI yet | 4, 7 |
-| AI instructions | `lib/instructions.ts` | ⬜ | 6 |
+| AI instructions | `lib/instructions.ts` | ✅ files are in `/docs`; tool only when needed (no tools for "hi"); one `grep -rni` first, then `sed -n` for lines; answer only from files; "Not found in your documents."; cite `[file:line]` | 6 |
 | Settings box | `components/settings-dialog.tsx`, `lib/settings.ts` | ⬜ | 9 |
 | Model picker | `lib/models.ts` | ⬜ | 10 |
 
@@ -132,3 +132,4 @@ Node: `>=22` in `package.json`. Vercel uses 24, your laptop runs 26.
 | 4 | `lib/shell.ts` added, with 9 vitest tests (`pnpm test`): grep with line numbers, `-i`, pipes, names with spaces, exit codes 0/1/127, no network (`curl` doesn't exist), writes thrown away, 8,000-character cut, no files. |
 | 5 | The route sends the whole chat to the agent (`createAgentUIStreamResponse`); the input stays visible. Tested in Chrome: the 2nd request carried `user,assistant,user`, and "how many calls did we have with **them**" was answered as Northstar Commerce (3 calls). Old tool still sends bad commands (D7, 400s from the sandbox) until Step 6. Refreshed the local OIDC token. |
 | 5 | Fix: "hi" ran 19 commands and read every file, because the course instructions said to always use `bashTool`. The instructions in `lib/agent.ts` now say: use the tool only when the message needs the files, reply to small talk without tools, and start with one targeted search. Retested: "hi" and "thanks!" use 0 commands. |
+| 6–7 | The switch. `bashTool` has no `execute`; the browser runs it over the saved files with `just-bash` and sends the output back. Tested in Chrome with the samples: "hi" → 1 request, 0 commands; "Did anyone mention pricing?" → 2 commands (one `grep -rni -e … /docs`), answer with `[file:line]`; finance follow-up → 1 command; "CEO's favourite colour" → "Not found in your documents."; limit test → 10 commands ran, 11th and 12th refused, stopped. Biggest request 9,800 characters; no request contained a whole file. |
