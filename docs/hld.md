@@ -82,8 +82,8 @@ every time, and the server keeps no memory between requests.
 | bash tool | `lib/tools.ts` | 🔁 runs on the server | 6 |
 | Sandbox | `@vercel/sandbox` | 🗑 | 8 |
 | Course transcripts | `lib/calls/*.md` | 🔁 become sample files | 3, 8 |
-| Files panel | `components/files-panel.tsx` | ✅ pick or drop files, lists name + size (held in memory only, lost on reload) | 1, 2 |
-| Saved files | `lib/files.ts` | ⬜ | 2 |
+| Files panel | `components/files-panel.tsx` | ✅ pick or drop files, list name + size, × remove, Clear all, red error messages. Loads saved files on open | 1, 2 |
+| Saved files | `lib/files.ts` | ✅ `listFiles` / `addFile` / `removeFile` / `clearFiles` over IndexedDB (`idb-keyval`, database `ask-your-docs`, store `files`, key = file name). Rules: 4 types, 20 files, 1 MB, `notes (2).md` | 2 |
 | Mini bash | `lib/shell.ts` (+ tests) | ⬜ | 4 |
 | AI instructions | `lib/instructions.ts` | ⬜ | 6 |
 | Settings box | `components/settings-dialog.tsx`, `lib/settings.ts` | ⬜ | 9 |
@@ -98,6 +98,7 @@ every time, and the server keeps no memory between requests.
 | `ai` 6.0.315, `@ai-sdk/react` 3.0.318 | agent + chat. We stay on **v6**: add AI SDK packages with `@ai-v6`, not plain `pnpm add` |
 | `@ai-sdk/google`, `@ai-sdk/openai`, `@ai-sdk/anthropic` | talk to the user's chosen provider (Step 10) |
 | `just-bash` 3.6.0 | the mini bash in the browser (Step 4) |
+| `idb-keyval` 6.3.0 | saves files in the browser's IndexedDB (Step 2). Tiny, Apache-2.0; opens the database lazily, so it's safe on the server |
 | `vitest` | tests (Step 4) |
 | `@vercel/sandbox`, `@ai-sdk/openai-compatible` | 🗑 removed in Step 8 |
 
@@ -125,3 +126,4 @@ Node: `>=22` in `package.json`. Vercel uses 24, your laptop runs 26.
 | 0 | Spike 2: a tool with no `execute`; the browser answered it (`onToolCall` → `addToolOutput`) and resent the chat (`sendAutomaticallyWhen`). 2 requests in total; the AI used the browser's answer. |
 | 0 | Plan simplified: text files only, files saved in the browser, user's own key (Google / OpenAI / Anthropic). |
 | 1 | Files panel added beside the chat. Picking or dropping files reads their text (`file.text()`) into React state as `{ name, size, text }`. Not saved yet, and not connected to the chat. |
+| 2 | Files saved in IndexedDB through `lib/files.ts`; the panel re-reads the saved list after every change. Tested in Chrome: survives reload, duplicate → `notes (2).md`, `.pdf` and >1 MB refused, 21st file refused, remove and clear stick after reload. |

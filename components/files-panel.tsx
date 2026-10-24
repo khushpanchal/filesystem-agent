@@ -1,8 +1,13 @@
 'use client';
 
-import { useState } from 'react';
-
-type DocFile = { name: string; size: number; text: string };
+import { useEffect, useState } from 'react';
+import {
+  addFile,
+  clearFiles,
+  listFiles,
+  removeFile,
+  type DocFile
+} from '@/lib/files';
 
 function formatSize(size: number) {
   if (size < 1024) return `${size} B`;
@@ -11,18 +16,43 @@ function formatSize(size: number) {
 
 export function FilesPanel() {
   const [files, setFiles] = useState<DocFile[]>([]);
+  const [errors, setErrors] = useState<string[]>([]);
+
+  // IndexedDB is the source of truth; re-read it after every change
+  async function refresh() {
+    setFiles(await listFiles());
+  }
+
+  // Load saved files once, when the page opens (browser only)
+  useEffect(() => {
+    refresh();
+  }, []);
 
   // Shared by the file picker and the drop zone
   async function addFiles(list: FileList | null) {
     if (!list) return;
-    const added = await Promise.all(
-      Array.from(list).map(async (file) => ({
-        name: file.name,
-        size: file.size,
-        text: await file.text()
-      }))
-    );
-    setFiles((prev) => [...prev, ...added]);
+    const errs: string[] = [];
+    // One at a time, so each add sees the files saved before it
+    for (const file of Array.from(list)) {
+      try {
+        await addFile(file);
+      } catch (e) {
+        errs.push((e as Error).message);
+      }
+    }
+    setErrors(errs);
+    await refresh();
+  }
+
+  async function handleRemove(name: string) {
+    await removeFile(name);
+    await refresh();
+  }
+
+  async function handleClear() {
+    await clearFiles();
+    setErrors([]);
+    await refresh();
   }
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -39,7 +69,17 @@ export function FilesPanel() {
 
   return (
     <div className="space-y-4 p-4 font-mono text-sm">
-      <div className="text-xs font-bold uppercase">Files</div>
+      <div className="flex items-center justify-between">
+        <div className="text-xs font-bold uppercase">Files</div>
+        {files.length > 0 && (
+          <button
+            onClick={handleClear}
+            className="text-xs text-zinc-500 hover:underline"
+          >
+            Clear all
+          </button>
+        )}
+      </div>
 
       <div
         onDragOver={(e) => e.preventDefault()}
@@ -59,16 +99,31 @@ export function FilesPanel() {
         </label>
       </div>
 
+      {errors.length > 0 && (
+        <ul className="space-y-1 text-xs text-red-600">
+          {errors.map((err, i) => (
+            <li key={i}>{err}</li>
+          ))}
+        </ul>
+      )}
+
       {files.length === 0 ? (
         <div className="text-xs text-zinc-400">No files yet</div>
       ) : (
         <ul className="space-y-1">
           {files.map((f) => (
-            <li key={f.name} className="flex justify-between gap-2">
-              <span className="truncate">{f.name}</span>
+            <li key={f.name} className="flex items-center gap-2">
+              <span className="flex-1 truncate">{f.name}</span>
               <span className="shrink-0 text-zinc-400">
                 {formatSize(f.size)}
               </span>
+              <button
+                onClick={() => handleRemove(f.name)}
+                aria-label={`Remove ${f.name}`}
+                className="shrink-0 text-zinc-400 hover:text-red-600"
+              >
+                ×
+              </button>
             </li>
           ))}
         </ul>
