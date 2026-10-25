@@ -1,162 +1,199 @@
-# How "Ask Your Docs" works
+# Ask Your Docs: Architecture
 
-> Updated after every step. The plan is in `docs/prd.md`; the reasons behind choices are in
-> `docs/decisions.md`.
-> Branch `mvp` · Course version saved as tag `course-complete`.
+> How the system is built. **Why** it is built this way is in [decisions.md](decisions.md);
+> **what** it does is in [prd.md](prd.md).
 
-**Status:** ✅ done · 🔁 exists, will change · 🗑 will be removed · ⬜ not built yet
+## 1. Overview
 
----
-
-## 1. Now (after Step 10)
+Ask Your Docs is an AI agent whose **reasoning runs on the server and whose tool runs in the
+browser**. The model decides which shell command to run; the browser runs it over files that only
+exist on the user's device, and sends back just the output.
 
 ```mermaid
 flowchart LR
   subgraph Browser["User's browser"]
-    UI["Chat page<br/>app/form.tsx"]
-    FILES[("Saved files<br/>lib/files.ts")]
-    SH["Mini bash<br/>lib/shell.ts"]
-    KEY[("Saved settings<br/>lib/settings.ts")]
+    UI["Chat<br/>components/chat.tsx"]
+    FILES[("Saved files<br/>IndexedDB")]
+    KEY[("Settings + key<br/>localStorage")]
+    SH["Sandboxed shell<br/>just-bash"]
+    PDF["PDF reader<br/>pdf.js"]
   end
-  R["Server<br/>app/api/route.ts"]
-  A["Agent<br/>lib/agent.ts"]
-  G[("AI provider<br/>Google / OpenAI / Anthropic<br/>user's own key")]
+  SV["Stateless API route<br/>app/api/route.ts"]
+  AI[("AI provider<br/>Google · OpenAI · Anthropic · OpenRouter")]
 
+  PDF -- "text, at upload" --> FILES
   KEY --> UI
-  UI -- "whole chat (no files)<br/>+ key in a header" --> R
-  R --> A
-  A <--> G
-  R -- "run this command" --> UI
-  UI --> SH
-  FILES --> SH
-  SH -- "output" --> UI
-```
-
-- Commands run **in the browser** over the saved files. The server has no files and no sandbox.
-- The server has **no key of its own**: every request carries the user's provider, key and model as headers, and a new agent is made for it.
-- What had to change:
-  1. ~~The server only reads the **last** message, so follow-up questions don't work.~~ Fixed in Step 5.
-  2. ~~The agent is created **once and shared**, with **our** AI Gateway key and one fixed model.~~ Fixed in Steps 9–10.
-  3. ~~Commands run in a **sandbox on the server**, but the files are in the browser.~~ Fixed in Steps 6–8.
-
----
-
-## 2. Target: the MVP
-
-```mermaid
-flowchart LR
-  subgraph Browser["User's browser"]
-    UI["Chat page"]
-    FILES[("Saved files")]
-    KEY[("Saved API key")]
-    SH["Mini bash<br/>(just-bash)"]
-  end
-  SV["Our server<br/>app/api/route.ts"]
-  AI[("AI provider<br/>Google / OpenAI / Anthropic")]
-
-  UI -- "chat + key (no files)" --> SV
+  UI -- "chat history + key in a header<br/>(no files)" --> SV
   SV <--> AI
-  SV -- "run this command" --> UI
+  SV -- "tool call: run this command" --> UI
   UI --> SH
   FILES --> SH
-  SH -- "output" --> UI
+  SH -- "command output" --> UI
 ```
 
-### One question, step by step
+**Key properties**
+
+- **No server state.** No database, no file storage, no sessions. Every request carries everything
+  it needs.
+- **No server secrets.** The server holds no AI key; each request uses the caller's key.
+- **Files never uploaded.** The server only sees the chat, including the output of commands the
+  model asked for (capped at 8,000 characters each).
+
+## 2. Components
+
+| Layer | File | Responsibility |
+|---|---|---|
+| Page | `app/layout.tsx`, `app/page.tsx` | HTML shell; two-column layout (files + settings, chat) |
+| Chat | `components/chat.tsx` | `useChat` setup, runs tool calls, loop limit, errors and notices, input |
+| Message view | `components/chat-message.tsx` | Renders text and command parts (`$ command` + output) |
+| Files panel | `components/files-panel.tsx` | Pick or drop files, list, remove, clear, errors |
+| Settings | `components/settings-dialog.tsx` | Provider, key and model form in a native `<dialog>` |
+| File store | `lib/files.ts` | `addFile` / `listFiles` / `removeFile` / `clearFiles`; type and size rules |
+| PDF reader | `lib/pdf.ts` | `pdfToText(file)`: text per page with `--- page N ---` markers |
+| Shell | `lib/shell.ts` | `runCommand(command, files)` → `{ stdout, stderr, exitCode, truncated }` |
+| Settings store | `lib/settings.ts` | Provider list and defaults, `localStorage` read/write, "open settings" event |
+| API route | `app/api/route.ts` | Validates headers, builds the model, streams the agent, maps errors |
+| Model factory | `lib/models.ts` | `getModel(provider, apiKey, modelId)` for the four providers |
+| Agent | `lib/agent.ts` | `createAgent(model)`: a `ToolLoopAgent` with instructions and the tool |
+| Tool | `lib/tools.ts` | `bashTool`: input `{ command: string }`, no `execute` (runs client-side) |
+| Instructions | `lib/instructions.ts` | System prompt: when to search, how to search, how to cite |
+
+The browser side imports nothing from the server side and vice versa, except shared constants and
+types from `lib/settings.ts`. Provider SDKs are only bundled into the server.
+
+## 3. One question, end to end
 
 ```mermaid
 sequenceDiagram
   participant B as Browser
-  participant S as Our server
-  participant M as AI
-  B->>S: chat so far + key
-  S->>M: instructions + chat + "you have a bashTool"
-  M-->>S: run `grep -rn pricing /docs`
-  S-->>B: run this command please
-  B->>B: mini bash runs grep on the saved files
-  B->>S: chat so far + the grep output
+  participant S as API route
+  participant M as AI provider
+  B->>S: POST /api {messages} + x-provider, x-api-key, x-model
+  S->>M: instructions + messages + bashTool schema
+  M-->>S: tool call: grep -rni "warranty" /docs
+  S-->>B: stream: tool call (step ends, no server execute)
+  B->>B: runCommand() over files from IndexedDB
+  B->>S: POST /api {messages + tool output}
   S->>M: same, plus the output
-  M-->>S: answer
-  S-->>B: answer (shown with the commands used)
+  M-->>S: answer text with [file:line]
+  S-->>B: stream: text, finish
 ```
 
-Each command = one more request from the browser. So the browser must send the **whole chat**
-every time, and the server keeps no memory between requests.
+- The AI SDK's `useChat` sends the next request automatically once every tool call in the last
+  message has an output (`sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls`).
+- Each command is one extra round trip, so the instructions push for one broad search first.
+- The server converts the UI messages and streams with `createAgentUIStreamResponse`; a new agent
+  and model client are created per request.
 
----
+## 4. Data
 
-## 3. Parts
+**Saved file** (IndexedDB database `ask-your-docs`, store `files`, key = file name)
 
-| Part | File | Status | Step |
-|---|---|---|---|
-| Chat page | `app/form.tsx` | ✅ runs the AI's commands in the browser: `onToolCall` → `runCommand(command, await listFiles())` → `addToolOutput`, resends with `sendAutomaticallyWhen`. Max 10 commands per answer (counter in a `useRef`). Shows `$ command` + output, tool errors in red, "Thinking…" while waiting, red notices (no answer, connection lost). Input pinned to the bottom; follows the newest message; "New chat" (keeps files and settings); with no key, opens Settings instead of sending | 5, 7, 9–11 |
-| Page layout | `app/page.tsx` | ✅ files panel on the left, chat on the right | 1 |
-| Server route | `app/api/route.ts` | ✅ reads `x-provider` / `x-api-key` / `x-model`; no key → 400 "Add your API key in Settings.", unknown provider → 400 "Choose a provider in Settings."; no fallback key. New agent per request, whole chat via `createAgentUIStreamResponse`. `onError` logs only the status code for provider errors | 5, 10 |
-| Agent | `lib/agent.ts` | ✅ `createAgent(model)`: a new `ToolLoopAgent` per request with `INSTRUCTIONS` + `bashTool` | 8, 10 |
-| bash tool | `lib/tools.ts` | ✅ `bashTool`: input `{ command: string }` (one full command line, D7), **no `execute`**, so the agent loop stops and the browser runs it | 6 |
-| Sandbox | `@vercel/sandbox` | ✅ removed in Step 8 | 8 |
-| Course transcripts | `lib/calls/*.md` | ✅ deleted in Step 8 (copies live in `public/samples/`) | 8 |
-| Sample files | `public/samples/call-*.md` | ✅ copies of the 3 transcripts with clear names; "Load sample files" button in the panel | 3 |
-| Files panel | `components/files-panel.tsx` | ✅ pick or drop files, list name + size, × remove, Clear all, red error messages. Loads saved files on open | 1, 2 |
-| Saved files | `lib/files.ts` | ✅ `listFiles` / `addFile` / `removeFile` / `clearFiles` over IndexedDB (`idb-keyval`, database `ask-your-docs`, store `files`, key = file name). Rules: 4 types, 20 files, 1 MB, `notes (2).md` | 2 |
-| Mini bash | `lib/shell.ts` (+ `lib/shell.test.ts`) | ✅ `runCommand(command, files) → { stdout, stderr, exitCode, truncated }`. Loads `just-bash` on first use, new `Bash` per command, `cwd /docs`, hardened limits, output cut at 8,000 characters, never throws. Called by the chat page | 4, 7 |
-| AI instructions | `lib/instructions.ts` | ✅ general assistant; searches `/docs` only when the question depends on the files (D15); one `grep -rni` first, then `sed -n` for lines; file answers cite `[file:line]`; says when something isn't in the documents | 6, 11 |
-| Settings box | `components/settings-dialog.tsx`, `lib/settings.ts` | ✅ button at the top of the left panel (shows provider · model, or "no API key yet" in red) opens a `<dialog>`: provider, hidden key field, model ID (default per provider), "Get a key" link. Saved in `localStorage` (`ask-your-docs-settings`). The chat's transport reads it on every request and sends 3 headers | 9 |
-| Model picker | `lib/models.ts` | ✅ `getModel(provider, apiKey, modelId)`: `createGoogleGenerativeAI` / `createOpenAI` / `createAnthropic` with the user's key. `isProvider()` checks the header (`Object.hasOwn`, so `toString` is refused) | 10 |
-| OpenRouter provider | `lib/settings.ts`, `lib/models.ts` | ✅ 4th provider: `createOpenRouter({ apiKey, compatibility: 'strict', appName })` `.chat(modelId)`; default `openai/gpt-5-mini`; key link openrouter.ai/keys; 402 → "out of credits" message | 12 |
-| PDF text reader | `lib/pdf.ts` | ✅ `pdfToText(file)`: lazy `pdfjs-dist` legacy build + worker, rebuilds lines from `hasEOL`, `--- page N ---` before each page. Errors: password-protected, unreadable, no text (scanned). `lib/files.ts` accepts `.pdf` up to 10 MB and saves its text | 13 |
+```ts
+type DocFile = { name: string; path: string; text: string; size: number; addedAt: number };
+// path is "/docs/<name>"; for a PDF, text is the extracted text with page markers
+```
 
----
+**Settings** (`localStorage`, key `ask-your-docs-settings`)
 
-## 4. Packages
+```ts
+type Settings = { provider: 'google' | 'openai' | 'anthropic' | 'openrouter'; apiKey: string; modelId: string };
+```
 
-| Package | Why |
+**Request** `POST /api`: body `{ id, messages }` (AI SDK UI messages); headers `x-provider`,
+`x-api-key`, `x-model`. **Response:** a UI message stream (server-sent events).
+
+**Tool** `bashTool`: input `{ command }` → output `{ stdout, stderr, exitCode, truncated }`.
+
+## 5. The agent loop
+
+| Concern | How it's handled |
 |---|---|
-| `ai` 6.0.315, `@ai-sdk/react` 3.0.318 | agent + chat. We stay on **v6**: add AI SDK packages with `@ai-v6`, not plain `pnpm add` |
-| `@ai-sdk/google`, `@ai-sdk/openai`, `@ai-sdk/anthropic` | talk to the user's chosen provider with their key (Step 10). Only imported by the server (`lib/models.ts`) |
-| `@openrouter/ai-sdk-provider` **2.10.0** (pinned) | OpenRouter (Step 12). The 2.x line is for AI SDK v6; 3.x needs v7, so don't upgrade it on its own |
-| `just-bash` 3.6.0 | the mini bash in the browser (Step 4) |
-| `idb-keyval` 6.3.0 | saves files in the browser's IndexedDB (Step 2). Tiny, Apache-2.0; opens the database lazily, so it's safe on the server |
-| `pdfjs-dist` 6.4.299 | reads PDF text in the browser (Step 13). Apache-2.0. **Legacy build** (the modern one needs `Math.sumPrecise`). Loaded only when a PDF is added: ~130 KB gzipped + a ~375 KB worker |
-| `vitest` | tests: `pnpm test` runs `vitest run` (Step 4) |
-| ~~`@vercel/sandbox`, `@ai-sdk/openai-compatible`~~ | removed in Step 8 |
+| Who decides | The model, guided by `lib/instructions.ts`: search only when the question depends on the files |
+| Tool input | One full command line (pipes allowed), e.g. `grep -rni -e "price" -e "cost" /docs` |
+| Where it runs | `onToolCall` in `components/chat.tsx` → `runCommand` → `addToolOutput` (not awaited, per the SDK) |
+| Isolation | A fresh `just-bash` instance per command with the `hardened` limit profile, `cwd /docs`, files mounted from IndexedDB; no network; writes are discarded |
+| Loop limit | 10 commands per answer. The 11th gets an error output telling the model to answer with what it has; after one more round, nothing more is sent |
+| Output size | stdout and stderr cut to 8,000 characters each, with `truncated: true` |
+| Server step limit | The SDK's default (20 steps) never triggers, because each request ends at the first tool call |
 
-Node: `>=22` in `package.json`. Vercel uses 24, your laptop runs 26.
+## 6. Security and privacy
 
----
-
-## 5. Where it runs
-
-| Branch | Vercel | URL |
+| Data | Where it lives | Who sees it |
 |---|---|---|
-| `mvp` | Preview | https://filesystem-agent-git-mvp-kodent-labs.vercel.app |
-| `main` | Preview for now | Vercel's production branch is still `master`. Fix it in Step 14. |
+| Whole files | IndexedDB in the user's browser | Only the user's browser |
+| Command output (file excerpts) | In the chat history | Our API route (in memory, per request) and the user's AI provider |
+| API key | `localStorage` | Sent per request in `x-api-key` to our route, which passes it to the provider SDK. Never stored or logged |
+| Chat history | Browser memory (cleared by reload or New chat) | Our API route (per request) and the AI provider |
 
----
+- **Logging:** provider failures are logged as provider name and HTTP status only. One provider
+  echoes part of a wrong key in its error message, so messages are not logged. Other errors log
+  `error.message`, never the full error object (it can contain the request body).
+- **Command safety:** the model's commands can't reach the network, the server or the real disk;
+  the shell is an interpreter over an in-memory file system.
+- **Input validation:** the route rejects a missing key or an unknown provider with HTTP 400
+  before parsing the body; the provider name is checked with `Object.hasOwn`.
+- **Known gap:** the AI SDK's own default error logger also prints provider errors. It shows the
+  request body only as `[Object]`, but it isn't under our control.
 
-## 6. Log
+## 7. Failure handling
 
-| Step | What happened |
+| Failure | Detected by | User sees |
+|---|---|---|
+| No key | Chat, before sending | Settings opens; the question stays typed |
+| Wrong key | 401/403, or Google's `API_KEY_INVALID` | "Your API key was rejected. Check it in Settings." |
+| Unknown model | 404 | "Model not found. Check the model name in Settings." |
+| Out of credits | 402 | "Your provider account is out of credits…" |
+| Rate limited | 429 | "Too many requests for your key. Wait a minute…" |
+| Provider overloaded | 500/503 (after the SDK's retries) | "The model is busy right now…" |
+| Provider hangs | 60-second request timeout → stream ends without a finish reason | "No answer came back: the model may be busy or took too long…" |
+| Network down | `useChat` reports a disconnect | "Lost the connection to the server…" |
+| Bad command | Non-zero exit code / stderr in the tool output | Shown under the command; the model can retry |
+| File rules | `lib/files.ts` / `lib/pdf.ts` throw a message | Red line in the files panel (wrong type, too big, 20 files, scanned or locked PDF) |
+
+## 8. Performance
+
+- **Lazy loading:** `just-bash` (~400 KB) loads on the first command; `pdf.js` (~130 KB gzipped,
+  plus a ~375 KB worker) loads on the first PDF. Neither is in the initial page load.
+- **Round trips:** a typical answer needs 1–3 commands (2–4 requests). The browser sends the full
+  history each time; the output cap keeps requests small.
+- **Cold start:** the API route has no setup work (no sandbox, no index), so the first request is
+  as fast as any other.
+
+## 9. Deployment
+
+- **Vercel**, Next.js 16 App Router with Turbopack, Node.js runtime. The API route is the only
+  serverless function; the page is static.
+- **No environment variables are required:** the server has no keys and no storage.
+- `next build --webpack` is not supported (`just-bash` uses `node:` imports that only Turbopack
+  handles); the default Turbopack build is used.
+
+## 10. Testing
+
+- `pnpm test` runs Vitest unit tests for the shell (`lib/shell.test.ts`): grep with line numbers,
+  pipes, names with spaces, exit codes, no network, discarded writes, output cap, empty folder.
+- `pnpm exec tsc --noEmit` type-checks the project.
+- End-to-end behaviour is checked against the acceptance checklist in [prd.md](prd.md) §9.
+
+## 11. Extending
+
+- **New provider:** add an entry to `PROVIDERS` in `lib/settings.ts` and a `case` in
+  `lib/models.ts`. The Settings dialog picks it up automatically.
+- **New file type:** add the extension to `TYPES` in `lib/files.ts` and convert it to text in
+  `addFile` (as `lib/pdf.ts` does for PDFs). The shell, the tool and citations need no changes.
+- **New tool:** define it in `lib/tools.ts` without `execute`, add it to the agent, and handle its
+  name in `onToolCall`.
+
+## 12. Packages
+
+| Package | Role |
 |---|---|
-| 0 | Tagged `course-complete`, made branch `mvp`, first preview deploy. |
-| 0 | Read through the code; found the 3 things to change (§1). Wrote these docs. |
-| 0 | Packages updated (one copy of `ai`, v6 providers, vitest, Node `>=22`). Refreshed the expired local OIDC token. |
-| 0 | Spike 1: `just-bash` ran `grep -rn hello /docs`, pipes and globs in Chrome. It only downloads on first use, and a fresh copy per command throws away any writes. |
-| 0 | Spike 2: a tool with no `execute`; the browser answered it (`onToolCall` → `addToolOutput`) and resent the chat (`sendAutomaticallyWhen`). 2 requests in total; the AI used the browser's answer. |
-| 0 | Plan simplified: text files only, files saved in the browser, user's own key (Google / OpenAI / Anthropic). |
-| 1 | Files panel added beside the chat. Picking or dropping files reads their text (`file.text()`) into React state as `{ name, size, text }`. Not saved yet, and not connected to the chat. |
-| 2 | Files saved in IndexedDB through `lib/files.ts`; the panel re-reads the saved list after every change. Tested in Chrome: survives reload, duplicate → `notes (2).md`, `.pdf` and >1 MB refused, 21st file refused, remove and clear stick after reload. |
-| 3 | Transcripts copied to `public/samples/` as `call-1-platform-review.md`, `call-2-follow-up-review.md`, `call-3-commercial-alignment.md`. The button fetches the missing ones, wraps them as `File`s and adds them like a user pick. It hides once all 3 are saved, so no copies. |
-| 4 | `lib/shell.ts` added, with 9 vitest tests (`pnpm test`): grep with line numbers, `-i`, pipes, names with spaces, exit codes 0/1/127, no network (`curl` doesn't exist), writes thrown away, 8,000-character cut, no files. |
-| 5 | The route sends the whole chat to the agent (`createAgentUIStreamResponse`); the input stays visible. Tested in Chrome: the 2nd request carried `user,assistant,user`, and "how many calls did we have with **them**" was answered as Northstar Commerce (3 calls). Old tool still sends bad commands (D7, 400s from the sandbox) until Step 6. Refreshed the local OIDC token. |
-| 5 | Fix: "hi" ran 19 commands and read every file, because the course instructions said to always use `bashTool`. The instructions in `lib/agent.ts` now say: use the tool only when the message needs the files, reply to small talk without tools, and start with one targeted search. Retested: "hi" and "thanks!" use 0 commands. |
-| 6–7 | The switch. `bashTool` has no `execute`; the browser runs it over the saved files with `just-bash` and sends the output back. Tested in Chrome with the samples: "hi" → 1 request, 0 commands; "Did anyone mention pricing?" → 2 commands (one `grep -rni -e … /docs`), answer with `[file:line]`; finance follow-up → 1 command; "CEO's favourite colour" → "Not found in your documents."; limit test → 10 commands ran, 11th and 12th refused, stopped. Biggest request 9,800 characters; no request contained a whole file. |
-| 8 | Sandbox removed: `lib/agent.ts` is just the agent (no `Sandbox.create()`, no `fs`/`path`), `lib/calls/` deleted, `@vercel/sandbox` and `@ai-sdk/openai-compatible` uninstalled (not in the lockfile either). `pnpm build` passes. Tested in Chrome: "hi" → 0 commands; pricing → 2 commands with citations. First request 1.3 s (was ~18 s while the sandbox VM started). |
-| 9–10 | Bring your own key. Settings box saves provider + key + model in the browser; the chat sends them as `x-provider` / `x-api-key` / `x-model`; the server makes a new agent with that key for each request. Defaults: `gemini-3.8-flash`, `gpt-6-luna`, `claude-haiku-5-5` (D14). `AI_GATEWAY_API_KEY` commented out in `.env.local`. Tested in Chrome: no key → "Add your API key in Settings." (no key header sent); dialog saves and survives reload; switching provider switches model + key link; a fake Google key went only in the header (not in the body), Google answered "API key not valid", server logged `Provider error: google 400`, and the key is nowhere in the server log. Known: the AI SDK's own default logger also prints provider errors; today it shows the request body only as `[Object]`. Not yet tested with a real key. |
-| 9–10 | Fix: with a real key, "hi" showed nothing. Cause: `gemini-3.8-flash` (and 3.7) were overloaded at Google (503 "high demand" after 16 s, or no answer at all), the SDK retried, and the page showed nothing while waiting. Changes: Google default → `gemini-3.5-flash-lite` (answered in 6–8 s with 1–2 commands); 60 s `timeout` on each request; "Thinking…" while waiting; plain messages for 401/403/`API_KEY_INVALID` (wrong key), 404 (model), 429 (rate limit), 500/503 (busy); a red "No answer came back…" when the stream ends without a finish reason (that's how the timeout arrives: an `abort`, not an error). |
-| 11 | Chat polish. Input bar pinned to the bottom (`sticky bottom-0`); the window scrolls to the newest message on every update; "New chat" clears messages (`stop` + `setMessages([])`), keeps files and settings; empty-chat hint; Send without a key opens Settings through a small browser event (`openSettings()` in `lib/settings.ts`) and sends nothing. Tested in Chrome (600 px tall window): no key → Settings opened, 0 requests, question kept; after 2 long answers the page was at the bottom, input visible, last message above it; New chat → 0 messages, 3 files kept; offline → "Lost the connection to the server…". |
-| 11 | General assistant (D15): the instructions said "answer only from the files", so "how hot is the sun?" got "not mentioned in the documents". Now it answers general questions itself and searches the files only when the question is about them. Tested: sun, "is your knowledge limited to documents?", "what does ISR mean?" → 0 commands, normal answers; pricing / "who is Claire Donovan?" → grep + citations; "do my files mention the CEO's favourite colour?" → "not in your documents". |
-| — | `prd.md` moved to `docs/prd.md` and tracked in git (it was ignored), so the plan and the reasons behind it ship with the code. |
-| — | Plan: new Phase 6 (D16): Step 12 OpenRouter, Step 13 PDF. Shipping moves to Phase 7 / Step 14. |
-| 12 | OpenRouter added as a 4th provider. Checked on OpenRouter's public model list: `openai/gpt-5-mini` (default, tools, $0.25/$2 per M tokens), `deepseek/deepseek-v4-flash` ($0.09/$0.18), `google/gemma-4-31b-it:free` (free, 20/min and 50/day). Tested: Settings lists OpenRouter with its default model and key link; a fake key → OpenRouter 401 → "Your API key was rejected."; the key is not in the server log. Not yet tested with a real OpenRouter key. |
-| 13 | PDF support. A PDF's text is read in the browser when it's added and saved like a text file at `/docs/<name>.pdf`, so `grep`/`sed` and citations work unchanged. Tested in Chrome: pdf.js not fetched on page load, fetched when a PDF is added; a 2-page PDF saved as `--- page 1 ---` … `--- page 2 ---` with its lines; an image-only PDF → "no text found (a scanned PDF?)"; a broken file → "couldn't read this PDF"; survives reload; "What is the warranty period…?" → one `grep`, answer cited `[manual.pdf:7]`. `pnpm build` passes. Password-protected PDFs not tested (no tool here to make one). |
+| `next` 16, `react` 19 | App framework |
+| `ai` 6, `@ai-sdk/react` 3 | Agent loop, streaming, chat state |
+| `@ai-sdk/google`, `@ai-sdk/openai`, `@ai-sdk/anthropic` | Provider clients (server only) |
+| `@openrouter/ai-sdk-provider` 2.10.0 | OpenRouter client; the 2.x line targets AI SDK 6 |
+| `just-bash` 3.6 | Sandboxed shell interpreter in the browser |
+| `pdfjs-dist` 6.4 (legacy build) | PDF text extraction in the browser |
+| `idb-keyval` 6.3 | Tiny promise wrapper over IndexedDB |
+| `zod` 4 | Tool input schema |
+| `vitest` 5, `tailwindcss` 4, `typescript` 5 | Tests, styles, types |

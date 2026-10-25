@@ -8,12 +8,13 @@ import {
 } from 'ai';
 import { listFiles } from '@/lib/files';
 import { loadSettings, openSettings } from '@/lib/settings';
-import { runCommand, type CommandResult } from '@/lib/shell';
+import { runCommand } from '@/lib/shell';
+import { ChatMessage } from './chat-message';
 
 // Each command is one more round trip to the server and the AI
 const MAX_COMMANDS = 10;
 
-export function Form() {
+export function Chat() {
   const [input, setInput] = useState('');
   // Endings that aren't errors in useChat, but the user still needs to know about
   const [notice, setNotice] = useState<string | null>(null);
@@ -127,56 +128,12 @@ export function Form() {
         <div className="mb-6 space-y-4 font-mono text-sm">
           {messages.length === 0 && (
             <div className="text-zinc-400">
-              Ask anything. Add text files on the left (or load the samples)
-              to ask about them too.
+              Ask anything. Add your files on the left to ask about them too.
             </div>
           )}
 
           {messages.map((message) => (
-            <div key={message.id} className="space-y-1">
-              <div className="text-xs font-bold uppercase">{message.role}</div>
-              {message.parts.map((part, i) => {
-                if (part.type === 'text') {
-                  return (
-                    <div key={i} className="whitespace-pre-wrap">
-                      {part.text}
-                    </div>
-                  );
-                }
-                if (part.type === 'tool-bashTool') {
-                  const toolPart = part as {
-                    state: string;
-                    input?: { command?: string };
-                    output?: CommandResult;
-                    errorText?: string;
-                  };
-                  return (
-                    <div
-                      key={i}
-                      className="space-y-1 text-blue-600 dark:text-blue-400"
-                    >
-                      <code>$ {toolPart.input?.command}</code>
-                      {toolPart.state === 'output-available' &&
-                        toolPart.output && (
-                          <pre className="overflow-x-auto p-2 text-xs text-green-600">
-                            {toolPart.output.stdout ||
-                              toolPart.output.stderr ||
-                              '(no output)'}
-                            {toolPart.output.truncated &&
-                              '\n… (cut at 8,000 characters)'}
-                          </pre>
-                        )}
-                      {toolPart.state === 'output-error' && (
-                        <pre className="overflow-x-auto p-2 text-xs text-red-600">
-                          {toolPart.errorText}
-                        </pre>
-                      )}
-                    </div>
-                  );
-                }
-                return null;
-              })}
-            </div>
+            <ChatMessage key={message.id} message={message} />
           ))}
 
           {/* Shown while waiting for the AI too, not just while text arrives */}

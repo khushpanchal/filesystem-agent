@@ -1,6 +1,6 @@
+import { Chat } from '@/components/chat';
 import { FilesPanel } from '@/components/files-panel';
 import { SettingsDialog } from '@/components/settings-dialog';
-import { Form } from './form';
 
 export default function Home() {
   return (
@@ -10,7 +10,7 @@ export default function Home() {
         <FilesPanel />
       </aside>
       <div className="flex-1">
-        <Form />
+        <Chat />
       </div>
     </div>
   );

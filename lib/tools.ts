@@ -2,7 +2,7 @@ import { tool } from 'ai';
 import { z } from 'zod';
 
 // No execute: the agent loop stops here and the browser runs the command
-// over the user's saved files (app/form.tsx → lib/shell.ts)
+// over the user's saved files (components/chat.tsx → lib/shell.ts)
 export const bashTool = tool({
   description: `
     Run one bash command line over the user's documents in /docs.

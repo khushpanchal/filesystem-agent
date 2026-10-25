@@ -1,318 +1,158 @@
-# File System Agent
+# Ask Your Docs
 
-## What we'll build
+**Chat with an AI that can read your own files, without uploading them anywhere.**
 
-A file system agent for analyzing call transcripts. This could be extended to:
-
-- analyzing legal documents
-- coding agents
-- financial analysis
-- SQL generation and execution
-
-For this project we'll use:
-
-- **Vercel Sandbox** - Secure, isolated environment for running untrusted code (bash commands)
-- **AI SDK** - Unified API for building AI applications with streaming, tools, and agents
-- **AI Gateway** - Routes requests to AI providers with automatic fallbacks, caching, and rate limiting
-
-## Why use a sandbox?
-
-When building AI agents that execute code, you're essentially letting an LLM run arbitrary commands on your system. This introduces significant security risks:
-
-- **Unpredictable outputs**: LLMs can hallucinate or generate malformed commands that behave unexpectedly
-- **Prompt injection**: Malicious user input could trick the agent into running harmful commands like `rm -rf /` or accessing sensitive files
-- **Resource exhaustion**: An infinite loop or memory-intensive command could crash your server
-- **Data exfiltration**: Without isolation, the agent could read environment variables, credentials, or private data
-
-A sandbox provides an isolated execution environment that protects your host system. With Vercel Sandbox:
-
-- Commands run in a separate container with no access to your actual filesystem
-- Network access can be restricted
-- Resource limits prevent runaway processes
-- Even if the LLM generates dangerous commands, they can't affect your production environment
-
-This means you can safely give your agent powerful tools like bash execution without worrying about what happens if something goes wrong.
-
-## Repository Overview
-
-The starter repo comes with all necessary files pre-created.
-
-**Existing files:**
-
-- `app/form.tsx` - A component that accepts a user query and sends to an API route, then renders the stream as it's returned
-- `app/api/route.ts` - A route handler that calls the agent and streams back to the UI
-- `lib/calls/` - A directory with pre-loaded dummy call transcripts
-
-**Files we will edit in this tutorial:**
-
-- `lib/agent.ts` - Where we will define the agent
-- `lib/tools.ts` - Where we will define the bash tool for our agent to use
-
-The `final` branch of the repo is the completed code if you need to reference.
-
-## Prerequisites
-
-For this project, you'll need:
-
-- [Node.js](https://nodejs.org/) 18+ installed
-- [pnpm](https://pnpm.io/) package manager
-- Vercel account
-- [Vercel CLI](https://vercel.com/docs/cli)
-- [AI Gateway API Key](https://vercel.com/d?to=%2F%5Bteam%5D%2F%7E%2Fai-gateway%2Fapi-keys&title=AI+Gateway+API+Keys)
-
-## Getting started
-
-Clone this starter repository.
-
-Using the Vercel CLI, create a new project and link it to your local repository.
-
-`vc link`
-
-You'll be prompted with a few questions:
+Add text files or PDFs, ask a question, and get an answer that cites the exact file and line it
+came from. Every command the AI runs to find the answer is shown in the chat. Your files stay in
+your browser, and you use your own AI key.
 
 ```
-Set up “~/filesystem-agent”? yes
-? Which scope should contain your project? your-vercel-team
-? Link to existing project? no
-? What’s your project’s name? filesystem-agent
-? In which directory is your code located? ./
+You:        Who owns the billing migration, and when is the launch?
+
+Assistant:  $ grep -rni "billing migration" /docs
+              /docs/team-notes.md:4:- Priya owns the billing migration.
+            $ grep -rni "launch" /docs
+              /docs/team-notes.md:3:- The launch date is 12 March.
+
+            Priya owns the billing migration [team-notes.md:4], and the launch
+            is on 12 March [team-notes.md:3].
 ```
 
-Once the project is created in Vercel, pull the automatically created environment variables to use locally. This handles [OIDC token authentication](https://vercel.com/docs/vercel-sandbox/concepts/authentication#vercel-oidc-token-recommended) automatically in your project.
+## Why use it
 
-`vc env pull`
+- **Private by design.** Files are saved in your browser (IndexedDB) and never uploaded. Only
+  the lines the AI asks to see are sent, as part of the chat.
+- **Answers you can check.** Each fact comes with a `[file:line]` citation, and you can see every
+  search the AI ran and what it returned.
+- **Exact, not "similar".** The AI searches with real shell tools (`grep`, `sed`), so it finds
+  the actual words in your files. There's no index to build and nothing to wait for.
+- **Your key, your choice.** Google, OpenAI, Anthropic or OpenRouter, with any model you like.
+  No account, no subscription, no middleman billing.
+- **A normal assistant too.** General questions are answered directly; your files are only
+  searched when a question is about them.
+- **Free to host.** No database, no file storage and no server-side AI key. Deploying needs no
+  environment variables.
 
-You can now inspect the OIDC token in `.env.local` in your project.
-
-Add your AI Gateway API Key to `.env.local`:
+## How it works
 
 ```
-AI_GATEWAY_API_KEY=your_ai_gateway_api_key
+ Your browser                                   Server (stateless)          AI provider
+┌──────────────────────────────────────────┐   ┌───────────────────┐   ┌──────────────┐
+│ files (IndexedDB) ─► sandboxed bash      │   │                   │   │              │
+│                       (just-bash)        │   │                   │   │              │
+│ chat ── question + history, key header ──┼──►│ agent ────────────┼──►│ your model   │
+│      ◄─ "run: grep -rni warranty /docs" ─┼───│ (tool call)       │◄──┼──            │
+│ runs it locally, sends back the output ──┼──►│                   │──►│              │
+│      ◄─ answer with [file:line] ─────────┼───│                   │◄──┼──            │
+└──────────────────────────────────────────┘   └───────────────────┘   └──────────────┘
 ```
 
-## Building the agent
+The AI runs on the server, but its one tool, a shell, runs **in your browser** over your saved
+files. The server never receives a whole file. Commands run in an isolated in-page shell with no
+network and no real disk, and anything a command writes is thrown away.
 
-In `lib/agent.ts`, define the initial agent instance using the `ToolLoopAgent` class from the AI SDK. We'll use Opus 4.6 as the default model, but you can change to [any other](https://vercel.com/ai-gateway/models). As it stands, the agent has no tools and no instructions yet.
+More detail: [Architecture](docs/hld.md) · [Design decisions](docs/decisions.md) ·
+[Product requirements](docs/prd.md)
 
-```ts
-// lib/agent.ts
-import { ToolLoopAgent } from 'ai';
+## Using it
 
-const MODEL = 'anthropic/claude-opus-4.6';
+1. **Get an API key** from one of the supported providers:
 
-export const agent = new ToolLoopAgent({
-  model: MODEL,
-  instructions: '',
-  tools: {}
-});
+   | Provider | Default model | Get a key |
+   |---|---|---|
+   | Google | `gemini-3.5-flash-lite` | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) (has a free tier) |
+   | OpenAI | `gpt-6-luna` | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) |
+   | Anthropic | `claude-haiku-5-5` | [platform.claude.com/settings/keys](https://platform.claude.com/settings/keys) |
+   | OpenRouter | `openai/gpt-5-mini` | [openrouter.ai/keys](https://openrouter.ai/keys) (one key, hundreds of models) |
+
+2. **Open Settings** (top left), choose the provider, paste the key and press **Save**. You can
+   type any other model ID offered by that provider.
+3. **Add files** by dragging them onto the panel or with **Choose files**. They stay there after
+   you reload or close the tab.
+4. **Ask.** For example:
+   - "Summarise each file in two sentences."
+   - "Did anyone mention pricing? Quote the lines."
+   - "What is the warranty period, and how do I make a claim?"
+   - Follow-ups work: "Who said that, and in which file?"
+5. **New chat** clears the conversation and keeps your files and settings.
+
+**Supported files:** `.txt`, `.md`, `.csv`, `.json` (up to 1 MB each) and `.pdf` (up to 10 MB,
+text-based; scanned PDFs have no text to read). Up to 20 files.
+
+**If something goes wrong**, the chat says what to fix: a rejected key, an unknown model name,
+no credits, too many requests, a busy model or a lost connection.
+
+## Privacy
+
+| What | Where it goes |
+|---|---|
+| Your files | Nowhere. Saved in this browser only |
+| Lines the AI's commands print (up to 8,000 characters per command) | Sent with the chat to the app's server and your AI provider |
+| Your API key | Saved in this browser; sent with each question in a request header, used for that request only, never stored or logged by the server |
+| Your chat | Kept in the page until you reload or start a new chat; sent with each question |
+
+Your AI provider's own data policy applies to what it receives.
+
+## Run it locally
+
+Requirements: Node.js 22 or later, and [pnpm](https://pnpm.io/).
+
+```bash
+git clone https://github.com/khushpanchal/filesystem-agent.git
+cd filesystem-agent
+pnpm install
+pnpm dev
 ```
 
-### Creating a bash tool
+Open http://localhost:3000, add a key in Settings, and add some files. No `.env` file is needed.
 
-Let's start by defining the tools that the agent has access to. Since we're building a file system agent, we need to instruct the agent on how to use bash to navigate. We'll do this by defining a new tool in `lib/tools.ts`. We can create a function that returns a tool from the AI SDK.
+| Command | What it does |
+|---|---|
+| `pnpm dev` | Start the development server |
+| `pnpm build` / `pnpm start` | Production build and server |
+| `pnpm test` | Unit tests for the in-browser shell (Vitest) |
+| `pnpm exec tsc --noEmit` | Type-check |
 
-```ts
-// lib/tools.ts
-import { tool } from 'ai';
-import { z } from 'zod';
+## Deploy
 
-export function createBashTool() {
-  return tool({
-    description: `
-      Execute bash commands to explore transcript and instruction files.
-      Examples (not exhaustive): ls, cat, less, head, tail, grep
-      `,
-    inputSchema: z.object({
-      command: z.string().describe('The bash command to execute'),
-      args: z.array(z.string()).describe('Arguments to pass to the command')
-    }),
-    execute: async ({ command, args }) => {
-      // code that executes when the tool is called
-    }
-  });
-}
+The app deploys to [Vercel](https://vercel.com) as-is: import the repository and deploy. There are
+no environment variables to set, because the server holds no keys and stores nothing.
+
+## Project structure
+
+```
+app/
+  layout.tsx, page.tsx      page shell and two-column layout
+  api/route.ts              the only server code: validates the key, runs the agent, maps errors
+components/
+  chat.tsx                  chat state, runs the AI's commands in the browser
+  chat-message.tsx          renders answers and commands
+  files-panel.tsx           add, list and remove files
+  settings-dialog.tsx       provider, key and model
+lib/
+  agent.ts, tools.ts        the agent and its one tool (bash, executed client-side)
+  instructions.ts           the system prompt
+  models.ts                 provider + key + model → AI SDK model
+  settings.ts               providers, defaults, saved settings
+  files.ts, pdf.ts          browser file storage and PDF text extraction
+  shell.ts                  runs a command over the saved files (just-bash)
+docs/                       product, architecture and design-decision documents
 ```
 
-As it stands, this function returns a tool to execute bash commands to explore files, but it doesn't actually execute any code. Via a Zod schema, we are also informing the agent that it needs to generate a command and arguments to pass to this tool. But as you can see, the execute callback function is empty. To actually execute the bash that the LLM is generating, we need to give it a safe execution environment. This is where sandbox comes in.
+To add a provider, add it to `PROVIDERS` in `lib/settings.ts` and one `case` in `lib/models.ts`.
+To add a file type, convert it to text in `lib/files.ts`, as `lib/pdf.ts` does for PDFs.
 
-To allow a sandbox instance to be passed in, lets update the function declaration so that it expects a sandbox as a parameter:
+## Built with
 
-```ts
-import type { Sandbox } from '@vercel/sandbox';
+[Next.js](https://nextjs.org) ·
+[AI SDK](https://ai-sdk.dev) ·
+[just-bash](https://github.com/vercel-labs/just-bash) (shell in the browser) ·
+[pdf.js](https://github.com/mozilla/pdf.js) (PDF text) ·
+[idb-keyval](https://github.com/jakearchibald/idb-keyval) (browser storage) ·
+[OpenRouter AI SDK provider](https://github.com/OpenRouterTeam/ai-sdk-provider) ·
+[Tailwind CSS](https://tailwindcss.com)
 
-export function createBashTool(sandbox: Sandbox) {
-  // ...
-}
-```
-
-### Define what the tool does
-
-The next thing we'll do is pass the commands and args to the sandbox to execute:
-
-```ts
-execute: async ({ command, args }) => {
-  const result = await sandbox.runCommand(command, args);
-  const textResults = await result.stdout();
-  const stderr = await result.stderr();
-  return {
-    stdout: textResults,
-    stderr: stderr,
-    exitCode: result.exitCode,
-  };
-},
-```
-
-Using the `runCommand` method on `sandbox`, we run the generated command and await the standard output, error output, and exit status of the process.
-
-Now we're almost ready to give this tool to our agent to use. But first, we need to initialize the sandbox in the agent so we can pass it to the `createBashTool` function.
-
-### Init the sandbox
-
-In `agent.ts`, initialize the sandbox above the agent definition.
-
-```ts
-import { Sandbox } from '@vercel/sandbox';
-
-const sandbox = await Sandbox.create();
-```
-
-We can now pass this sandbox to the `createBashTool` function to create the tool in the agent.
-
-```ts
-import { createBashTool } from './tools';
-
-const agent = new ToolLoopAgent({
-  // ...
-  tools: {
-    bashTool: createBashTool(sandbox)
-  }
-});
-```
-
-The agent now has access to the bash tool, but there are no files mounted to the sandbox for the agent to explore. We need to load files into the sandbox before we run the agent.
-
-### Writing files to the sandbox
-
-In this project, we have 3 dummy call transcripts in the `lib/calls` directory that we want to load as context to the sandbox before asking our agent a question.
-
-Let's create a function called `loadSandboxFiles` in `agent.ts` that we can call to load these files into the sandbox.
-
-```ts
-import path from 'path';
-import fs from 'fs/promises';
-
-async function loadSandboxFiles(sandbox: Sandbox) {
-  const callsDir = path.join(process.cwd(), 'lib', 'calls');
-  const callFiles = await fs.readdir(callsDir);
-
-  for (const file of callFiles) {
-    const filePath = path.join(callsDir, file);
-    const buffer = await fs.readFile(filePath);
-    await sandbox.writeFiles([{ path: `calls/${file}`, content: buffer }]);
-  }
-}
-```
-
-What this function does is build the full path of the `calls` folder (in the same `lib` directory as `agent.ts`). Then it reads all filenames in that folder, loads each file as a buffer, and writes them to the sandbox's file system.
-
-Be sure to call the function before the agent is created:
-
-```ts
-await loadSandboxFiles(sandbox);
-```
-
-### Agent instructions
-
-Now that we have everything wired up, let's write clear instructions for the agent. We want it to use the bash tool to generate and execute commands to explore all the call transcripts to answer the user's questions.
-
-```ts
-const INSTRUCTIONS = `
-You are a helpful assistant that answers questions about customer calls. Use bashTool to explore the files and find relevant information pertaining to the user's query. Using the information you find, craft a response for the user and output it as text.
-`;
-```
-
-Add the `INSTRUCTIONS` to the agent:
-
-```ts
-const agent = new ToolLoopAgent({
-  instructions: INSTRUCTIONS
-  // ...
-});
-```
-
-### Complete agent.ts
-
-Here's the complete `lib/agent.ts` file with all the pieces together:
-
-```ts
-// lib/agent.ts
-import { ToolLoopAgent } from 'ai';
-import { Sandbox } from '@vercel/sandbox';
-import { createBashTool } from './tools';
-import fs from 'fs/promises';
-import path from 'path';
-
-const INSTRUCTIONS = `
-You are a helpful assistant that answers questions about customer calls. Use bashTool to explore the files and find relevant information pertaining to the user's query. Using the information you find, craft a response for the user and output it as text.
-`;
-
-const MODEL = 'anthropic/claude-opus-4.6';
-
-const sandbox = await Sandbox.create();
-await loadSandboxFiles(sandbox);
-
-export const agent = new ToolLoopAgent({
-  model: MODEL,
-  instructions: INSTRUCTIONS,
-  tools: {
-    bashTool: createBashTool(sandbox)
-  }
-});
-
-async function loadSandboxFiles(sandbox: Sandbox) {
-  const callsDir = path.join(process.cwd(), 'lib', 'calls');
-  const callFiles = await fs.readdir(callsDir);
-
-  for (const file of callFiles) {
-    const filePath = path.join(callsDir, file);
-    const buffer = await fs.readFile(filePath);
-    await sandbox.writeFiles([{ path: `calls/${file}`, content: buffer }]);
-  }
-}
-```
-
-And the agent is complete! We're ready to test it. As noted, there is already a chat input and API route created to kick off the agent and stream back the results.
-
-### Testing our agent
-
-Start the development server with `pnpm dev` and go to `http://localhost:3000` in the browser to test the agent.
-
-Ask it a question like `how did the deal progress?` or `did they mention pricing?` and see the agent work its magic by navigating the filesystem!
-
-## Extending this app
-
-Here are some ways to build on this project:
-
-### Add more tools
-
-Give the agent additional capabilities:
-
-- **File upload tool** - Let users upload documents dynamically instead of pre-loading them
-- **Search tool** - Add semantic search over documents using embeddings
-- **Write tool** - Allow the agent to create summaries or reports and save them
-
-### Improve the data pipeline
-
-- Load files from cloud storage (S3, Vercel Blob) instead of the local filesystem
-- Connect to a database to query structured data alongside the transcripts
-- Add a tool that fetches files on-demand rather than pre-loading everything
-
-### Enhance the UI
-
-- Add chat history persistence with a database
-- Show a file tree of what's available in the sandbox
-- Add authentication to restrict access
-
-### Use bash-tool
-
-The [`bash-tool`](https://github.com/vercel-labs/bash-tool) package abstracts the complexity of writing and reading files from the filesystem and integrates seamlessly with Vercel Sandbox and the AI SDK.
+This project started from the starter app of Vercel's **Filesystem Agents** course, which runs an
+agent's bash commands in a server-side Vercel Sandbox. Ask Your Docs moves the files and the
+command execution into the browser and adds bring-your-own-key providers. The reasoning behind each
+change is in [docs/decisions.md](docs/decisions.md).

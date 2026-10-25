@@ -13,9 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'File System Agent',
+  title: 'Ask Your Docs',
   description:
-    'A file system agent that can answer questions about the files in the file system'
+    'Chat with an AI that can read your own files. Your files stay in your browser.'
 };
 
 export default function RootLayout({

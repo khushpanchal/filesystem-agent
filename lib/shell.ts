@@ -8,7 +8,7 @@ export type CommandResult = {
 };
 
 // The whole tool output goes back to the AI on every request, so keep it small
-const MAX_OUTPUT = 8000;
+export const MAX_OUTPUT = 8000;
 
 function cut(text: string) {
   return text.length > MAX_OUTPUT ? text.slice(0, MAX_OUTPUT) : text;

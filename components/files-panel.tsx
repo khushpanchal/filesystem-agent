@@ -9,16 +9,10 @@ import {
   type DocFile
 } from '@/lib/files';
 
-// Served from public/samples/ (the 3 course call transcripts)
-const SAMPLES = [
-  'call-1-platform-review.md',
-  'call-2-follow-up-review.md',
-  'call-3-commercial-alignment.md'
-];
-
 function formatSize(size: number) {
   if (size < 1024) return `${size} B`;
-  return `${(size / 1024).toFixed(1)} KB`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / 1024 / 1024).toFixed(1)} MB`;
 }
 
 export function FilesPanel() {
@@ -38,7 +32,7 @@ export function FilesPanel() {
   }, []);
 
   // Shared by the file picker and the drop zone
-  async function addFiles(list: FileList | File[] | null) {
+  async function addFiles(list: FileList | null) {
     if (!list) return;
     setAdding(true);
     const errs: string[] = [];
@@ -53,27 +47,6 @@ export function FilesPanel() {
     setErrors(errs);
     await refresh();
     setAdding(false);
-  }
-
-  // Samples not saved yet, so a second click doesn't add copies
-  const missingSamples = SAMPLES.filter(
-    (name) => !files.some((f) => f.name === name)
-  );
-
-  // Download each sample and turn it into a File, as if the user picked it
-  async function loadSamples() {
-    try {
-      const samples = await Promise.all(
-        missingSamples.map(async (name) => {
-          const res = await fetch(`/samples/${name}`);
-          if (!res.ok) throw new Error(`${name}: could not load sample`);
-          return new File([await res.text()], name, { type: 'text/markdown' });
-        })
-      );
-      await addFiles(samples);
-    } catch (e) {
-      setErrors([(e as Error).message]);
-    }
   }
 
   async function handleRemove(name: string) {
@@ -130,15 +103,6 @@ export function FilesPanel() {
           />
         </label>
       </div>
-
-      {missingSamples.length > 0 && (
-        <button
-          onClick={loadSamples}
-          className="w-full border px-3 py-1 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800"
-        >
-          Load sample files
-        </button>
-      )}
 
       {adding && <div className="text-xs text-zinc-400">Reading files…</div>}
 

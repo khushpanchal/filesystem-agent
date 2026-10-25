@@ -2,9 +2,8 @@ export type Provider = 'google' | 'openai' | 'anthropic' | 'openrouter';
 
 export type Settings = { provider: Provider; apiKey: string; modelId: string };
 
-// Default models: cheap, fast, good at tool calls (checked 2026-10-25).
-// Google: 3.8/3.7-flash were overloaded (no answer in 40 s); 3.5-flash-lite
-// answered the sample questions in 6-8 s with 1-2 commands.
+// Defaults are cheap, fast models with reliable tool calling (see docs/decisions.md).
+// Users can type any other model ID in Settings.
 export const PROVIDERS: Record<
   Provider,
   { label: string; defaultModel: string; keyUrl: string }
