@@ -54,7 +54,8 @@ concern, not by date.
 - **Rejected:** a sandbox per user on the server (cost, cold starts, files would have to be
   uploaded); running the whole agent in the browser (provider SDKs and keys in client bundles,
   CORS limits on some providers, one less place to enforce timeouts and error handling).
-- **Consequences:** the server never sees whole files. Each command costs one extra round trip,
+- **Consequences:** files are never uploaded; the server and the model see only what the model's
+  commands print (capped, and shown to the user). Each command costs one extra round trip,
   which shaped the instructions (one broad search first) and the 10-command limit.
 - **Validated by:** a spike where a tool with no `execute` was answered by the browser and the
   model used the result, in two requests.

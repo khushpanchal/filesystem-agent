@@ -2,6 +2,8 @@
 
 **Chat with an AI that can read your own files, without uploading them anywhere.**
 
+**Try it:** https://filesystem-agent-two-gamma.vercel.app (bring your own API key)
+
 Add text files or PDFs, ask a question, and get an answer that cites the exact file and line it
 came from. Every command the AI runs to find the answer is shown in the chat. Your files stay in
 your browser, and you use your own AI key.
@@ -20,8 +22,8 @@ Assistant:  $ grep -rni "billing migration" /docs
 
 ## Why use it
 
-- **Private by design.** Files are saved in your browser (IndexedDB) and never uploaded. Only
-  the lines the AI asks to see are sent, as part of the chat.
+- **Private by design.** Files are saved in your browser (IndexedDB) and never uploaded. The AI
+  only sees what its commands print, usually a few matching lines, sent as part of the chat.
 - **Answers you can check.** Each fact comes with a `[file:line]` citation, and you can see every
   search the AI ran and what it returned.
 - **Exact, not "similar".** The AI searches with real shell tools (`grep`, `sed`), so it finds
@@ -48,7 +50,8 @@ Assistant:  $ grep -rni "billing migration" /docs
 ```
 
 The AI runs on the server, but its one tool, a shell, runs **in your browser** over your saved
-files. The server never receives a whole file. Commands run in an isolated in-page shell with no
+files. Files are never uploaded; the server and the AI only see what each command prints (at most
+8,000 characters per command). Commands run in an isolated in-page shell with no
 network and no real disk, and anything a command writes is thrown away.
 
 More detail: [Architecture](docs/hld.md) · [Design decisions](docs/decisions.md) ·
@@ -87,11 +90,12 @@ no credits, too many requests, a busy model or a lost connection.
 | What | Where it goes |
 |---|---|
 | Your files | Nowhere. Saved in this browser only |
-| Lines the AI's commands print (up to 8,000 characters per command) | Sent with the chat to the app's server and your AI provider |
+| What the AI's commands print (up to 8,000 characters per command; usually a few matching lines, but a small file can be printed in full if the AI reads it) | Sent with the chat to the app's server and your AI provider |
 | Your API key | Saved in this browser; sent with each question in a request header, used for that request only, never stored or logged by the server |
 | Your chat | Kept in the page until you reload or start a new chat; sent with each question |
 
-Your AI provider's own data policy applies to what it receives.
+Your AI provider's own data policy applies to what it receives. Every command and its output is
+shown in the chat, so you can always see exactly what was shared.
 
 ## Run it locally
 

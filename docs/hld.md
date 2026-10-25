@@ -37,7 +37,8 @@ flowchart LR
   it needs.
 - **No server secrets.** The server holds no AI key; each request uses the caller's key.
 - **Files never uploaded.** The server only sees the chat, including the output of commands the
-  model asked for (capped at 8,000 characters each).
+  model asked for (capped at 8,000 characters each). A command that prints a small file in full
+  (`cat notes.md`) shares that file's text; every command and output is visible in the chat.
 
 ## 2. Components
 
@@ -121,8 +122,8 @@ type Settings = { provider: 'google' | 'openai' | 'anthropic' | 'openrouter'; ap
 
 | Data | Where it lives | Who sees it |
 |---|---|---|
-| Whole files | IndexedDB in the user's browser | Only the user's browser |
-| Command output (file excerpts) | In the chat history | Our API route (in memory, per request) and the user's AI provider |
+| Files | IndexedDB in the user's browser | Never uploaded as files |
+| Command output (matching lines, or a small file in full) | In the chat history, shown to the user | Our API route (in memory, per request) and the user's AI provider |
 | API key | `localStorage` | Sent per request in `x-api-key` to our route, which passes it to the provider SDK. Never stored or logged |
 | Chat history | Browser memory (cleared by reload or New chat) | Our API route (per request) and the AI provider |
 

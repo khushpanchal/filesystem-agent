@@ -1,6 +1,6 @@
 # Ask Your Docs: Product Requirements
 
-> **Status:** MVP complete · **Docs:** [Architecture](hld.md) · [Design decisions](decisions.md)
+> **Status:** MVP released · [Live app](https://filesystem-agent-two-gamma.vercel.app) · **Docs:** [Architecture](hld.md) · [Design decisions](decisions.md)
 
 ## 1. Summary
 
@@ -88,7 +88,7 @@ exports. Getting a quick, trustworthy answer out of them is harder than it shoul
 
 | Area | Requirement |
 |---|---|
-| Privacy | Whole files never leave the browser. Only the chat, including the command output the AI asked for, is sent, and only to our stateless server and the user's chosen provider. The key travels in a request header and is never stored or logged on the server. |
+| Privacy | Files are never uploaded. Only the chat is sent, including the output of the commands the AI ran (at most 8,000 characters per command, and visible to the user), and only to our stateless server and the user's chosen provider. The key travels in a request header and is never stored or logged on the server. |
 | Safety | The AI's commands run in an isolated in-page shell: no network, no real disk, nothing kept between commands, strict execution limits. |
 | Cost | No server-side storage, database or AI spend. Each command's output is capped so long chats stay affordable on the user's key. |
 | Performance | Heavy libraries (the shell, the PDF reader) load only when first needed. A typical answer takes 1–3 commands and a few seconds. |
@@ -119,7 +119,8 @@ exports. Getting a quick, trustworthy answer out of them is harder than it shoul
 4. Ask a follow-up that depends on the previous answer: it works.
 5. Ask about something that isn't in the files: the answer says so.
 6. Ask a general question ("What is the capital of Japan?"): answered directly, no commands.
-7. DevTools → Network: no request contains a whole file; the key appears only in a header.
+7. DevTools → Network: no file is uploaded; request bodies contain only the chat and command
+   output (each output at most 8,000 characters); the key appears only in a header.
 8. Wrong key, unknown model, offline: each shows a clear message.
 9. A scanned PDF and a non-PDF renamed to `.pdf`: each is refused with a clear message.
 
@@ -148,6 +149,7 @@ exports. Getting a quick, trustworthy answer out of them is harder than it shoul
 
 | Risk | Mitigation |
 |---|---|
+| The AI may read a whole small file (e.g. with `cat`), which sends that file's text to the provider | Every command and its output is shown in the chat; output is capped at 8,000 characters per command; instructions prefer targeted searches over reading whole files |
 | A key saved in the browser could be read by malicious script on the page | No third-party scripts or analytics; the key is sent only with the user's own requests |
 | Default models get renamed, overloaded or retired | The model is a free-text field; defaults live in one file; errors name the fix |
 | Small models misuse the tool or loop | One plain command string as input, a 10-command limit per answer, short instructions |
