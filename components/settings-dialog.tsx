@@ -110,7 +110,7 @@ export function SettingsDialog() {
               rel="noreferrer"
               className="text-xs text-blue-600 hover:underline"
             >
-              Get a {info.label} key →
+              Get your {info.label} key →
             </a>
           </label>
 

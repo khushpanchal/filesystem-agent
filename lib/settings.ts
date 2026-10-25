@@ -1,4 +1,4 @@
-export type Provider = 'google' | 'openai' | 'anthropic';
+export type Provider = 'google' | 'openai' | 'anthropic' | 'openrouter';
 
 export type Settings = { provider: Provider; apiKey: string; modelId: string };
 
@@ -23,6 +23,12 @@ export const PROVIDERS: Record<
     label: 'Anthropic',
     defaultModel: 'claude-haiku-5-5',
     keyUrl: 'https://platform.claude.com/settings/keys'
+  },
+  // One key, many models (IDs look like "vendor/model"; free ones end in ":free")
+  openrouter: {
+    label: 'OpenRouter',
+    defaultModel: 'openai/gpt-5-mini',
+    keyUrl: 'https://openrouter.ai/keys'
   }
 };
 

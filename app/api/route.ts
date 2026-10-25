@@ -33,6 +33,8 @@ function errorMessage(error: unknown, provider: string) {
         return 'Your API key was rejected. Check it in Settings.';
       case 404:
         return 'Model not found. Check the model name in Settings.';
+      case 402:
+        return 'Your provider account is out of credits. Add credits, or pick a free model in Settings.';
       case 429:
         return 'Too many requests for your key. Wait a minute and try again.';
       case 500:

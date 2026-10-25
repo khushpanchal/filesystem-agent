@@ -103,6 +103,8 @@ every time, and the server keeps no memory between requests.
 | AI instructions | `lib/instructions.ts` | ✅ general assistant; searches `/docs` only when the question depends on the files (D15); one `grep -rni` first, then `sed -n` for lines; file answers cite `[file:line]`; says when something isn't in the documents | 6, 11 |
 | Settings box | `components/settings-dialog.tsx`, `lib/settings.ts` | ✅ button at the top of the left panel (shows provider · model, or "no API key yet" in red) opens a `<dialog>`: provider, hidden key field, model ID (default per provider), "Get a key" link. Saved in `localStorage` (`ask-your-docs-settings`). The chat's transport reads it on every request and sends 3 headers | 9 |
 | Model picker | `lib/models.ts` | ✅ `getModel(provider, apiKey, modelId)`: `createGoogleGenerativeAI` / `createOpenAI` / `createAnthropic` with the user's key. `isProvider()` checks the header (`Object.hasOwn`, so `toString` is refused) | 10 |
+| OpenRouter provider | `lib/settings.ts`, `lib/models.ts` | ✅ 4th provider: `createOpenRouter({ apiKey, compatibility: 'strict', appName })` `.chat(modelId)`; default `openai/gpt-5-mini`; key link openrouter.ai/keys; 402 → "out of credits" message | 12 |
+| PDF text reader | `lib/pdf.ts` (planned) | ⬜ | 13 |
 
 ---
 
@@ -112,6 +114,7 @@ every time, and the server keeps no memory between requests.
 |---|---|
 | `ai` 6.0.315, `@ai-sdk/react` 3.0.318 | agent + chat. We stay on **v6**: add AI SDK packages with `@ai-v6`, not plain `pnpm add` |
 | `@ai-sdk/google`, `@ai-sdk/openai`, `@ai-sdk/anthropic` | talk to the user's chosen provider with their key (Step 10). Only imported by the server (`lib/models.ts`) |
+| `@openrouter/ai-sdk-provider` **2.10.0** (pinned) | OpenRouter (Step 12). The 2.x line is for AI SDK v6; 3.x needs v7, so don't upgrade it on its own |
 | `just-bash` 3.6.0 | the mini bash in the browser (Step 4) |
 | `idb-keyval` 6.3.0 | saves files in the browser's IndexedDB (Step 2). Tiny, Apache-2.0; opens the database lazily, so it's safe on the server |
 | `vitest` | tests: `pnpm test` runs `vitest run` (Step 4) |
@@ -126,7 +129,7 @@ Node: `>=22` in `package.json`. Vercel uses 24, your laptop runs 26.
 | Branch | Vercel | URL |
 |---|---|---|
 | `mvp` | Preview | https://filesystem-agent-git-mvp-kodent-labs.vercel.app |
-| `main` | Preview for now | Vercel's production branch is still `master`. Fix it in Step 12. |
+| `main` | Preview for now | Vercel's production branch is still `master`. Fix it in Step 14. |
 
 ---
 
@@ -153,3 +156,5 @@ Node: `>=22` in `package.json`. Vercel uses 24, your laptop runs 26.
 | 11 | Chat polish. Input bar pinned to the bottom (`sticky bottom-0`); the window scrolls to the newest message on every update; "New chat" clears messages (`stop` + `setMessages([])`), keeps files and settings; empty-chat hint; Send without a key opens Settings through a small browser event (`openSettings()` in `lib/settings.ts`) and sends nothing. Tested in Chrome (600 px tall window): no key → Settings opened, 0 requests, question kept; after 2 long answers the page was at the bottom, input visible, last message above it; New chat → 0 messages, 3 files kept; offline → "Lost the connection to the server…". |
 | 11 | General assistant (D15): the instructions said "answer only from the files", so "how hot is the sun?" got "not mentioned in the documents". Now it answers general questions itself and searches the files only when the question is about them. Tested: sun, "is your knowledge limited to documents?", "what does ISR mean?" → 0 commands, normal answers; pricing / "who is Claire Donovan?" → grep + citations; "do my files mention the CEO's favourite colour?" → "not in your documents". |
 | — | `prd.md` moved to `docs/prd.md` and tracked in git (it was ignored), so the plan and the reasons behind it ship with the code. |
+| — | Plan: new Phase 6 (D16): Step 12 OpenRouter, Step 13 PDF. Shipping moves to Phase 7 / Step 14. |
+| 12 | OpenRouter added as a 4th provider. Checked on OpenRouter's public model list: `openai/gpt-5-mini` (default, tools, $0.25/$2 per M tokens), `deepseek/deepseek-v4-flash` ($0.09/$0.18), `google/gemma-4-31b-it:free` (free, 20/min and 50/day). Tested: Settings lists OpenRouter with its default model and key link; a fake key → OpenRouter 401 → "Your API key was rejected."; the key is not in the server log. Not yet tested with a real OpenRouter key. |

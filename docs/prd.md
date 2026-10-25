@@ -41,11 +41,11 @@ uploaded anywhere). They use **their own AI API key**. That's the whole MVP: it'
 
 | In the MVP | Not in the MVP (see §7) |
 |---|---|
-| Add text files (`.txt .md .csv .json`) | PDF, Word |
+| Add text files (`.txt .md .csv .json`) and **PDF** (text read in the browser, D16) | Word, scanned PDFs (no text to read) |
 | Files saved in the browser, list / remove / clear | Accounts, database, sync between devices |
 | Ask questions, follow-up questions | Clickable citations, saving the chat |
 | See every command the AI ran + its output | Very long chats (auto-trimming history) |
-| User's own key: Google, OpenAI or Anthropic | AI Gateway, Ollama, OpenRouter |
+| User's own key: Google, OpenAI, Anthropic or **OpenRouter** (D16) | AI Gateway, Ollama |
 | "Load sample files" button (the 3 course transcripts) | Rate limiting, polish, accessibility work |
 
 ---
@@ -175,9 +175,23 @@ instructions short and tell it to use one good `grep` instead of many `cat`s.
 - Input always visible, "New chat" button (keeps files), scroll to newest message.
 - Plain-language errors: no key → open settings, wrong key, too many requests, network down.
 
-### Phase 6 — Ship
+### Phase 6 — More providers and files (added 2026-10-25, D16)
 
-**Step 12 · README + release**
+**Step 12 · OpenRouter**
+- A 4th provider in Settings: one OpenRouter key gives access to many models.
+- `lib/settings.ts`: add it to `PROVIDERS` (label, default model, key link).
+  `lib/models.ts`: one more `case` (package/approach checked against the installed AI SDK v6).
+- Done when: with an OpenRouter key, the sample questions are answered with commands + citations.
+
+**Step 13 · PDF files**
+- Accept `.pdf`: read its text **in the browser** when it's added (lazy-loaded PDF library),
+  save it like a text file, with `--- page N ---` markers so citations can point to pages.
+- Clear message for PDFs with no text (scanned) or with a password.
+- Done when: a PDF's contents can be asked about, and it survives a reload.
+
+### Phase 7 — Ship
+
+**Step 14 · README + release**
 - Short README: what it is, how to use it, "your files never leave your browser", credit to the
   Vercel course.
 - Set Vercel's production branch to `main` (it's still `master`), merge `mvp` → `main`, deploy,
@@ -199,8 +213,8 @@ instructions short and tell it to use one good `grep` instead of many `cat`s.
 ---
 
 ## 7. Later (not in the MVP)
-PDF and Word files · clickable citations · saving the chat · trimming very long chats ·
-AI Gateway / Ollama / OpenRouter · smart search (RAG) · rate limiting · running the whole agent
+Word files · scanned PDFs (OCR) · clickable citations · saving the chat · trimming very long chats ·
+AI Gateway / Ollama · smart search (RAG) · rate limiting · running the whole agent
 in the browser (no server at all).
 
 ---
