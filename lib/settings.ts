@@ -41,3 +41,16 @@ export function loadSettings(): Settings | null {
 export function saveSettings(settings: Settings) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
 }
+
+// The chat and the Settings box are separate components; this browser event
+// lets the chat open Settings (e.g. when there's no key yet)
+const OPEN_EVENT = 'open-settings';
+
+export function openSettings() {
+  window.dispatchEvent(new Event(OPEN_EVENT));
+}
+
+export function onOpenSettings(listener: () => void) {
+  window.addEventListener(OPEN_EVENT, listener);
+  return () => window.removeEventListener(OPEN_EVENT, listener);
+}

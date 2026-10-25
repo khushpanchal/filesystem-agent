@@ -12,7 +12,8 @@ A web page where someone:
 
 1. adds a few text files,
 2. types a question,
-3. gets an answer taken from those files, and can see which commands the AI ran to find it.
+3. gets an answer: from those files when the question is about them (and can see which commands
+   the AI ran to find it), or from the AI's general knowledge otherwise (D15).
 
 The files stay in **their own browser** (they're still there after a reload, and they're never
 uploaded anywhere). They use **their own AI API key**. That's the whole MVP: it's for us to try it out.
@@ -103,23 +104,23 @@ instructions short and tell it to use one good `grep` instead of many `cat`s.
 
 ### Phase 1 — Files in the browser (the old chat keeps working)
 
-**Step 1 · Files panel**
+**✅ Step 1 · Files panel**
 - New `components/files-panel.tsx`, shown next to the chat in `app/page.tsx`.
 - Pick or drag-and-drop text files. Show name and size.
 - Done when: chosen files are listed on screen.
 
-**Step 2 · Save files in the browser**
+**✅ Step 2 · Save files in the browser**
 - New `lib/files.ts` with `addFile`, `listFiles`, `removeFile`, `clearFiles` (using `idb-keyval`).
 - Rules: only `.txt .md .csv .json`, max 20 files, max 1 MB each, same name → add a number.
 - Done when: files are still listed after a reload; remove and clear work.
 
-**Step 3 · Sample files button**
+**✅ Step 3 · Sample files button**
 - Copy `lib/calls/*.md` into `public/samples/`; a button loads them into the files panel.
 - Done when: one click adds the 3 transcripts.
 
 ### Phase 2 — Bash in the browser
 
-**Step 4 · `runCommand`**
+**✅ Step 4 · `runCommand`**
 - New `lib/shell.ts`: `runCommand(command, files) → { stdout, stderr, exitCode, truncated }`.
   - Load `just-bash` only when first needed (`await import`).
   - A new `Bash` for every command, so nothing a command writes is kept.
@@ -129,37 +130,39 @@ instructions short and tell it to use one good `grep` instead of many `cat`s.
 
 ### Phase 3 — Switch from the sandbox to the browser
 
-**Step 5 · Server receives the whole chat**
+**✅ Step 5 · Server receives the whole chat**
 - `app/api/route.ts`: stop taking only the last message; use
   `createAgentUIStreamResponse({ agent, uiMessages: messages })` (proven in Spike 2).
 - Done when: a follow-up question works (temporarily show the input after the first answer).
 
-**Step 6 · Tool without `execute` + new instructions**
+**✅ Step 6 · Tool without `execute` + new instructions**
 - `lib/tools.ts`: `bashTool` with input `{ command: string }` and **no** `execute`.
 - New `lib/instructions.ts`: files are in `/docs`; prefer one `grep -rn`; answer only from the
   files; say "not found in your documents"; mention `[file:line]`.
+  *Changed by D15:* it's a general assistant that searches the files only when the question
+  depends on them.
 
-**Step 7 · Browser runs the tool**
+**✅ Step 7 · Browser runs the tool**
 - `app/form.tsx`: `onToolCall` → `runCommand(command, files)` → `addToolOutput`;
   `sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls`.
 - Stop after 10 commands in one answer.
 - Show `$ command` and its output.
 - Done when: with the samples loaded, "did anyone mention pricing?" gets answered.
 
-**Step 8 · Remove the sandbox**
+**✅ Step 8 · Remove the sandbox**
 - `lib/agent.ts`: delete the `Sandbox` and file-copy code. `pnpm remove @vercel/sandbox
   @ai-sdk/openai-compatible`. Delete `lib/calls/`.
 - Done when: the app works with no sandbox and the type-check passes.
 
 ### Phase 4 — User's own key
 
-**Step 9 · Settings box**
+**✅ Step 9 · Settings box**
 - New `components/settings-dialog.tsx` + `lib/settings.ts` (localStorage): provider
   (Google / OpenAI / Anthropic), API key (hidden field), model ID (filled in per provider; check
   current IDs at this step). Link to "get a key" for each; suggest Google AI Studio (free, no card).
 - The chat sends `x-provider`, `x-api-key` and `x-model` headers.
 
-**Step 10 · Server uses the user's key**
+**✅ Step 10 · Server uses the user's key**
 - New `lib/models.ts`: `getModel(provider, apiKey, modelId)`. One function, three providers,
   like `BaseProvider` in the Python agent.
 - `lib/agent.ts`: `createAgent(model)` makes a new agent for every request (no shared global).
@@ -168,7 +171,7 @@ instructions short and tell it to use one good `grep` instead of many `cat`s.
 
 ### Phase 5 — Make the chat usable
 
-**Step 11 · Chat polish**
+**✅ Step 11 · Chat polish**
 - Input always visible, "New chat" button (keeps files), scroll to newest message.
 - Plain-language errors: no key → open settings, wrong key, too many requests, network down.
 
@@ -187,7 +190,8 @@ instructions short and tell it to use one good `grep` instead of many `cat`s.
 2. Reload → files are still there.
 3. Ask 3 questions → correct answers, commands are visible, answers mention the file.
 4. Ask a follow-up that depends on the last answer → works.
-5. Ask something not in the files → "not found in your documents".
+5. Ask about something that isn't in the files → says it's not in your documents.
+   Ask a general question ("how hot is the sun?") → answered normally, with no commands.
 6. DevTools → Network: no request contains a whole file; the key is only in a header.
 7. Wrong key → a clear message, not a crash.
 8. `@vercel/sandbox` is gone from `package.json`.

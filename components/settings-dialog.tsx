@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   PROVIDERS,
   loadSettings,
+  onOpenSettings,
   saveSettings,
   type Provider,
   type Settings
@@ -21,6 +22,9 @@ export function SettingsDialog() {
   useEffect(() => {
     setSaved(loadSettings());
   }, []);
+
+  // Let other components open this box (the chat does when there's no key)
+  useEffect(() => onOpenSettings(open), []);
 
   function open() {
     // Start from what's saved, or the defaults
@@ -70,7 +74,7 @@ export function SettingsDialog() {
 
       <dialog
         ref={dialogRef}
-        className="m-auto w-full max-w-md border p-6 font-mono text-sm backdrop:bg-black/40"
+        className="m-auto w-full max-w-md border bg-background p-6 font-mono text-sm text-foreground backdrop:bg-black/40"
       >
         <form onSubmit={handleSave} className="space-y-4">
           <div className="text-xs font-bold uppercase">Settings</div>
