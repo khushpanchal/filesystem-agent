@@ -24,6 +24,8 @@ function formatSize(size: number) {
 export function FilesPanel() {
   const [files, setFiles] = useState<DocFile[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
+  // Reading a PDF can take a moment
+  const [adding, setAdding] = useState(false);
 
   // IndexedDB is the source of truth; re-read it after every change
   async function refresh() {
@@ -38,6 +40,7 @@ export function FilesPanel() {
   // Shared by the file picker and the drop zone
   async function addFiles(list: FileList | File[] | null) {
     if (!list) return;
+    setAdding(true);
     const errs: string[] = [];
     // One at a time, so each add sees the files saved before it
     for (const file of Array.from(list)) {
@@ -49,6 +52,7 @@ export function FilesPanel() {
     }
     setErrors(errs);
     await refresh();
+    setAdding(false);
   }
 
   // Samples not saved yet, so a second click doesn't add copies
@@ -114,13 +118,13 @@ export function FilesPanel() {
         onDrop={handleDrop}
         className="space-y-2 border-2 border-dashed p-4 text-center text-zinc-500"
       >
-        <div>Drop .txt .md .csv .json here</div>
+        <div>Drop .txt .md .csv .json .pdf here</div>
         <label className="inline-block cursor-pointer bg-black px-3 py-1 text-white">
           Choose files
           <input
             type="file"
             multiple
-            accept=".txt,.md,.csv,.json"
+            accept=".txt,.md,.csv,.json,.pdf"
             onChange={handleChange}
             className="hidden"
           />
@@ -135,6 +139,8 @@ export function FilesPanel() {
           Load sample files
         </button>
       )}
+
+      {adding && <div className="text-xs text-zinc-400">Reading files…</div>}
 
       {errors.length > 0 && (
         <ul className="space-y-1 text-xs text-red-600">

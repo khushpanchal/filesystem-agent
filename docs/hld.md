@@ -104,7 +104,7 @@ every time, and the server keeps no memory between requests.
 | Settings box | `components/settings-dialog.tsx`, `lib/settings.ts` | ✅ button at the top of the left panel (shows provider · model, or "no API key yet" in red) opens a `<dialog>`: provider, hidden key field, model ID (default per provider), "Get a key" link. Saved in `localStorage` (`ask-your-docs-settings`). The chat's transport reads it on every request and sends 3 headers | 9 |
 | Model picker | `lib/models.ts` | ✅ `getModel(provider, apiKey, modelId)`: `createGoogleGenerativeAI` / `createOpenAI` / `createAnthropic` with the user's key. `isProvider()` checks the header (`Object.hasOwn`, so `toString` is refused) | 10 |
 | OpenRouter provider | `lib/settings.ts`, `lib/models.ts` | ✅ 4th provider: `createOpenRouter({ apiKey, compatibility: 'strict', appName })` `.chat(modelId)`; default `openai/gpt-5-mini`; key link openrouter.ai/keys; 402 → "out of credits" message | 12 |
-| PDF text reader | `lib/pdf.ts` (planned) | ⬜ | 13 |
+| PDF text reader | `lib/pdf.ts` | ✅ `pdfToText(file)`: lazy `pdfjs-dist` legacy build + worker, rebuilds lines from `hasEOL`, `--- page N ---` before each page. Errors: password-protected, unreadable, no text (scanned). `lib/files.ts` accepts `.pdf` up to 10 MB and saves its text | 13 |
 
 ---
 
@@ -117,6 +117,7 @@ every time, and the server keeps no memory between requests.
 | `@openrouter/ai-sdk-provider` **2.10.0** (pinned) | OpenRouter (Step 12). The 2.x line is for AI SDK v6; 3.x needs v7, so don't upgrade it on its own |
 | `just-bash` 3.6.0 | the mini bash in the browser (Step 4) |
 | `idb-keyval` 6.3.0 | saves files in the browser's IndexedDB (Step 2). Tiny, Apache-2.0; opens the database lazily, so it's safe on the server |
+| `pdfjs-dist` 6.4.299 | reads PDF text in the browser (Step 13). Apache-2.0. **Legacy build** (the modern one needs `Math.sumPrecise`). Loaded only when a PDF is added: ~130 KB gzipped + a ~375 KB worker |
 | `vitest` | tests: `pnpm test` runs `vitest run` (Step 4) |
 | ~~`@vercel/sandbox`, `@ai-sdk/openai-compatible`~~ | removed in Step 8 |
 
@@ -158,3 +159,4 @@ Node: `>=22` in `package.json`. Vercel uses 24, your laptop runs 26.
 | — | `prd.md` moved to `docs/prd.md` and tracked in git (it was ignored), so the plan and the reasons behind it ship with the code. |
 | — | Plan: new Phase 6 (D16): Step 12 OpenRouter, Step 13 PDF. Shipping moves to Phase 7 / Step 14. |
 | 12 | OpenRouter added as a 4th provider. Checked on OpenRouter's public model list: `openai/gpt-5-mini` (default, tools, $0.25/$2 per M tokens), `deepseek/deepseek-v4-flash` ($0.09/$0.18), `google/gemma-4-31b-it:free` (free, 20/min and 50/day). Tested: Settings lists OpenRouter with its default model and key link; a fake key → OpenRouter 401 → "Your API key was rejected."; the key is not in the server log. Not yet tested with a real OpenRouter key. |
+| 13 | PDF support. A PDF's text is read in the browser when it's added and saved like a text file at `/docs/<name>.pdf`, so `grep`/`sed` and citations work unchanged. Tested in Chrome: pdf.js not fetched on page load, fetched when a PDF is added; a 2-page PDF saved as `--- page 1 ---` … `--- page 2 ---` with its lines; an image-only PDF → "no text found (a scanned PDF?)"; a broken file → "couldn't read this PDF"; survives reload; "What is the warranty period…?" → one `grep`, answer cited `[manual.pdf:7]`. `pnpm build` passes. Password-protected PDFs not tested (no tool here to make one). |

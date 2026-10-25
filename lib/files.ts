@@ -1,4 +1,5 @@
 import { clear, createStore, del, keys, set, values } from 'idb-keyval';
+import { pdfToText } from './pdf';
 
 export type DocFile = {
   name: string;
@@ -11,9 +12,11 @@ export type DocFile = {
 // Lazy: the database is only opened on first use, so this is safe during SSR
 const store = createStore('ask-your-docs', 'files');
 
-const TYPES = ['.txt', '.md', '.csv', '.json'];
+const TYPES = ['.txt', '.md', '.csv', '.json', '.pdf'];
 const MAX_FILES = 20;
 const MAX_SIZE = 1024 * 1024;
+// PDFs are much bigger than the text inside them
+const MAX_PDF_SIZE = 10 * 1024 * 1024;
 
 export async function listFiles(): Promise<DocFile[]> {
   const files = await values<DocFile>(store);
@@ -37,7 +40,11 @@ export async function addFile(file: File): Promise<DocFile> {
   if (!TYPES.some((type) => lower.endsWith(type))) {
     throw new Error(`${file.name}: only ${TYPES.join(' ')} files`);
   }
-  if (file.size > MAX_SIZE) {
+  const isPdf = lower.endsWith('.pdf');
+  if (isPdf && file.size > MAX_PDF_SIZE) {
+    throw new Error(`${file.name}: PDFs can be up to 10 MB`);
+  }
+  if (!isPdf && file.size > MAX_SIZE) {
     throw new Error(`${file.name}: larger than 1 MB`);
   }
   const taken = await keys<string>(store);
@@ -49,7 +56,8 @@ export async function addFile(file: File): Promise<DocFile> {
   const doc: DocFile = {
     name,
     path: `/docs/${name}`,
-    text: await file.text(),
+    // A PDF is saved as its text, so grep and cat work on it like any file
+    text: isPdf ? await pdfToText(file) : await file.text(),
     size: file.size,
     addedAt: Date.now()
   };

@@ -177,13 +177,13 @@ instructions short and tell it to use one good `grep` instead of many `cat`s.
 
 ### Phase 6 — More providers and files (added 2026-10-25, D16)
 
-**Step 12 · OpenRouter**
+**✅ Step 12 · OpenRouter**
 - A 4th provider in Settings: one OpenRouter key gives access to many models.
 - `lib/settings.ts`: add it to `PROVIDERS` (label, default model, key link).
   `lib/models.ts`: one more `case` (package/approach checked against the installed AI SDK v6).
 - Done when: with an OpenRouter key, the sample questions are answered with commands + citations.
 
-**Step 13 · PDF files**
+**✅ Step 13 · PDF files**
 - Accept `.pdf`: read its text **in the browser** when it's added (lazy-loaded PDF library),
   save it like a text file, with `--- page N ---` markers so citations can point to pages.
 - Clear message for PDFs with no text (scanned) or with a password.

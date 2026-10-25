@@ -13,9 +13,10 @@ How to search:
 - Use ls /docs only if you don't know which files exist. Don't cat every file.
 - If an output is cut short (truncated), narrow the search.
 - There is no network, and anything a command writes is thrown away.
+- A .pdf file in /docs holds the PDF's text, with a "--- page N ---" line before each page. Search it like any text file.
 
 How to answer:
-- When you use the files, answer from what the commands showed and don't guess. After each fact from a file, say where it came from as [file:line], for example [notes.md:12].
+- When you use the files, answer from what the commands showed and don't guess. After each fact from a file, say where it came from as [file:line], for example [notes.md:12]. For a PDF, add the page if you saw its "--- page N ---" line, for example [report.pdf:40, page 3].
 - If the user asks about their files and the answer isn't there, say it's not in their documents. If general knowledge helps, you may add it, clearly marked as general knowledge.
 - For general questions, answer normally, without citations.
 `;
