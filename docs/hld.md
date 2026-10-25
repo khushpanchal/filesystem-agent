@@ -8,7 +8,7 @@
 
 ---
 
-## 1. Now (after Step 8)
+## 1. Now (after Step 10)
 
 ```mermaid
 flowchart LR
@@ -16,12 +16,14 @@ flowchart LR
     UI["Chat page<br/>app/form.tsx"]
     FILES[("Saved files<br/>lib/files.ts")]
     SH["Mini bash<br/>lib/shell.ts"]
+    KEY[("Saved settings<br/>lib/settings.ts")]
   end
   R["Server<br/>app/api/route.ts"]
   A["Agent<br/>lib/agent.ts"]
-  G[("AI Gateway<br/>our key, one fixed model")]
+  G[("AI provider<br/>Google / OpenAI / Anthropic<br/>user's own key")]
 
-  UI -- "whole chat (no files)" --> R
+  KEY --> UI
+  UI -- "whole chat (no files)<br/>+ key in a header" --> R
   R --> A
   A <--> G
   R -- "run this command" --> UI
@@ -31,9 +33,10 @@ flowchart LR
 ```
 
 - Commands run **in the browser** over the saved files. The server has no files and no sandbox.
+- The server has **no key of its own**: every request carries the user's provider, key and model as headers, and a new agent is made for it.
 - What had to change:
   1. ~~The server only reads the **last** message, so follow-up questions don't work.~~ Fixed in Step 5.
-  2. The agent is created **once and shared**, with **our** AI Gateway key and one fixed model. Fixed in Phase 4 (Steps 9–10).
+  2. ~~The agent is created **once and shared**, with **our** AI Gateway key and one fixed model.~~ Fixed in Steps 9–10.
   3. ~~Commands run in a **sandbox on the server**, but the files are in the browser.~~ Fixed in Steps 6–8.
 
 ---
@@ -88,8 +91,8 @@ every time, and the server keeps no memory between requests.
 |---|---|---|---|
 | Chat page | `app/form.tsx` | ✅ runs the AI's commands in the browser: `onToolCall` → `runCommand(command, await listFiles())` → `addToolOutput`, resends with `sendAutomaticallyWhen`. Max 10 commands per answer (counter in a `useRef`). Shows `$ command` + output, tool errors in red. 🔁 polish in Step 11 | 5, 7, 11 |
 | Page layout | `app/page.tsx` | ✅ files panel on the left, chat on the right | 1 |
-| Server route | `app/api/route.ts` | 🔁 `createAgentUIStreamResponse({ agent, uiMessages: messages })`: the whole chat goes to the agent. `onError` logs only `error.message`. Still uses our shared agent and key | 5 ✅, 10 |
-| Agent | `lib/agent.ts` | 🔁 `ToolLoopAgent` with `INSTRUCTIONS` + `bashTool`, no sandbox. Still created once and shared, on our AI Gateway key | 8 ✅, 10 |
+| Server route | `app/api/route.ts` | ✅ reads `x-provider` / `x-api-key` / `x-model`; no key → 400 "Add your API key in Settings.", unknown provider → 400 "Choose a provider in Settings."; no fallback key. New agent per request, whole chat via `createAgentUIStreamResponse`. `onError` logs only the status code for provider errors | 5, 10 |
+| Agent | `lib/agent.ts` | ✅ `createAgent(model)`: a new `ToolLoopAgent` per request with `INSTRUCTIONS` + `bashTool` | 8, 10 |
 | bash tool | `lib/tools.ts` | ✅ `bashTool`: input `{ command: string }` (one full command line, D7), **no `execute`**, so the agent loop stops and the browser runs it | 6 |
 | Sandbox | `@vercel/sandbox` | ✅ removed in Step 8 | 8 |
 | Course transcripts | `lib/calls/*.md` | ✅ deleted in Step 8 (copies live in `public/samples/`) | 8 |
@@ -98,8 +101,8 @@ every time, and the server keeps no memory between requests.
 | Saved files | `lib/files.ts` | ✅ `listFiles` / `addFile` / `removeFile` / `clearFiles` over IndexedDB (`idb-keyval`, database `ask-your-docs`, store `files`, key = file name). Rules: 4 types, 20 files, 1 MB, `notes (2).md` | 2 |
 | Mini bash | `lib/shell.ts` (+ `lib/shell.test.ts`) | ✅ `runCommand(command, files) → { stdout, stderr, exitCode, truncated }`. Loads `just-bash` on first use, new `Bash` per command, `cwd /docs`, hardened limits, output cut at 8,000 characters, never throws. Called by the chat page | 4, 7 |
 | AI instructions | `lib/instructions.ts` | ✅ files are in `/docs`; tool only when needed (no tools for "hi"); one `grep -rni` first, then `sed -n` for lines; answer only from files; "Not found in your documents."; cite `[file:line]` | 6 |
-| Settings box | `components/settings-dialog.tsx`, `lib/settings.ts` | ⬜ | 9 |
-| Model picker | `lib/models.ts` | ⬜ | 10 |
+| Settings box | `components/settings-dialog.tsx`, `lib/settings.ts` | ✅ button at the top of the left panel (shows provider · model, or "no API key yet" in red) opens a `<dialog>`: provider, hidden key field, model ID (default per provider), "Get a key" link. Saved in `localStorage` (`ask-your-docs-settings`). The chat's transport reads it on every request and sends 3 headers | 9 |
+| Model picker | `lib/models.ts` | ✅ `getModel(provider, apiKey, modelId)`: `createGoogleGenerativeAI` / `createOpenAI` / `createAnthropic` with the user's key. `isProvider()` checks the header (`Object.hasOwn`, so `toString` is refused) | 10 |
 
 ---
 
@@ -108,7 +111,7 @@ every time, and the server keeps no memory between requests.
 | Package | Why |
 |---|---|
 | `ai` 6.0.315, `@ai-sdk/react` 3.0.318 | agent + chat. We stay on **v6**: add AI SDK packages with `@ai-v6`, not plain `pnpm add` |
-| `@ai-sdk/google`, `@ai-sdk/openai`, `@ai-sdk/anthropic` | talk to the user's chosen provider (Step 10) |
+| `@ai-sdk/google`, `@ai-sdk/openai`, `@ai-sdk/anthropic` | talk to the user's chosen provider with their key (Step 10). Only imported by the server (`lib/models.ts`) |
 | `just-bash` 3.6.0 | the mini bash in the browser (Step 4) |
 | `idb-keyval` 6.3.0 | saves files in the browser's IndexedDB (Step 2). Tiny, Apache-2.0; opens the database lazily, so it's safe on the server |
 | `vitest` | tests: `pnpm test` runs `vitest run` (Step 4) |
@@ -145,3 +148,5 @@ Node: `>=22` in `package.json`. Vercel uses 24, your laptop runs 26.
 | 5 | Fix: "hi" ran 19 commands and read every file, because the course instructions said to always use `bashTool`. The instructions in `lib/agent.ts` now say: use the tool only when the message needs the files, reply to small talk without tools, and start with one targeted search. Retested: "hi" and "thanks!" use 0 commands. |
 | 6–7 | The switch. `bashTool` has no `execute`; the browser runs it over the saved files with `just-bash` and sends the output back. Tested in Chrome with the samples: "hi" → 1 request, 0 commands; "Did anyone mention pricing?" → 2 commands (one `grep -rni -e … /docs`), answer with `[file:line]`; finance follow-up → 1 command; "CEO's favourite colour" → "Not found in your documents."; limit test → 10 commands ran, 11th and 12th refused, stopped. Biggest request 9,800 characters; no request contained a whole file. |
 | 8 | Sandbox removed: `lib/agent.ts` is just the agent (no `Sandbox.create()`, no `fs`/`path`), `lib/calls/` deleted, `@vercel/sandbox` and `@ai-sdk/openai-compatible` uninstalled (not in the lockfile either). `pnpm build` passes. Tested in Chrome: "hi" → 0 commands; pricing → 2 commands with citations. First request 1.3 s (was ~18 s while the sandbox VM started). |
+| 9–10 | Bring your own key. Settings box saves provider + key + model in the browser; the chat sends them as `x-provider` / `x-api-key` / `x-model`; the server makes a new agent with that key for each request. Defaults: `gemini-3.8-flash`, `gpt-6-luna`, `claude-haiku-5-5` (D14). `AI_GATEWAY_API_KEY` commented out in `.env.local`. Tested in Chrome: no key → "Add your API key in Settings." (no key header sent); dialog saves and survives reload; switching provider switches model + key link; a fake Google key went only in the header (not in the body), Google answered "API key not valid", server logged `Provider error: google 400`, and the key is nowhere in the server log. Known: the AI SDK's own default logger also prints provider errors; today it shows the request body only as `[Object]`. Not yet tested with a real key. |
+| 9–10 | Fix: with a real key, "hi" showed nothing. Cause: `gemini-3.8-flash` (and 3.7) were overloaded at Google (503 "high demand" after 16 s, or no answer at all), the SDK retried, and the page showed nothing while waiting. Changes: Google default → `gemini-3.5-flash-lite` (answered in 6–8 s with 1–2 commands); 60 s `timeout` on each request; "Thinking…" while waiting; plain messages for 401/403/`API_KEY_INVALID` (wrong key), 404 (model), 429 (rate limit), 500/503 (busy); a red "No answer came back…" when the stream ends without a finish reason (that's how the timeout arrives: an `abort`, not an error). |

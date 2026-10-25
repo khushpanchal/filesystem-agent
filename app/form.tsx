@@ -7,6 +7,7 @@ import {
   lastAssistantMessageIsCompleteWithToolCalls
 } from 'ai';
 import { listFiles } from '@/lib/files';
+import { loadSettings } from '@/lib/settings';
 import { runCommand, type CommandResult } from '@/lib/shell';
 
 // Each command is one more round trip to the server and the AI
@@ -14,17 +15,43 @@ const MAX_COMMANDS = 10;
 
 export function Form() {
   const [input, setInput] = useState('');
+  // Endings that aren't errors in useChat, but the user still needs to know about
+  const [notice, setNotice] = useState<string | null>(null);
   // A ref, not state: useChat keeps the first version of its callbacks,
   // so they must read the current count from here
   const commandsRef = useRef(0);
 
   const { messages, sendMessage, addToolOutput, status, error } = useChat({
-    transport: new DefaultChatTransport({ api: '/api' }),
+    transport: new DefaultChatTransport({
+      api: '/api',
+      // Read on every request, so a key saved in Settings is used right away.
+      // The key travels in a header, never in the chat body.
+      headers: (): Record<string, string> => {
+        const settings = loadSettings();
+        if (!settings) return {};
+        return {
+          'x-provider': settings.provider,
+          'x-api-key': settings.apiKey,
+          'x-model': settings.modelId
+        };
+      }
+    }),
     // Once every command has an output, send the chat back to the AI.
     // One extra round after the limit lets the AI answer with what it found.
     sendAutomaticallyWhen: ({ messages }) =>
       commandsRef.current <= MAX_COMMANDS + 1 &&
       lastAssistantMessageIsCompleteWithToolCalls({ messages }),
+    onFinish({ isError, isDisconnect, finishReason }) {
+      if (isDisconnect) {
+        setNotice('Lost the connection to the server. Check your internet and try again.');
+      } else if (!isError && !finishReason) {
+        // Every normal ending sends a finish reason ("stop", "tool-calls").
+        // The server's timeout ends the stream without one, and not as an error.
+        setNotice(
+          'No answer came back: the model may be busy or took too long. Try again, or pick another model in Settings.'
+        );
+      }
+    },
     // The AI asked for a command: run it here, over the saved files
     async onToolCall({ toolCall }) {
       if (toolCall.dynamic || toolCall.toolName !== 'bashTool') return;
@@ -57,6 +84,7 @@ export function Form() {
     const text = input;
     setInput('');
     commandsRef.current = 0;
+    setNotice(null);
     sendMessage({ text });
   };
 
@@ -111,11 +139,14 @@ export function Form() {
             </div>
           ))}
 
-          {status === 'streaming' && (
-            <div className="text-xs text-zinc-400">streaming...</div>
+          {/* Shown while waiting for the AI too, not just while text arrives */}
+          {(status === 'submitted' || status === 'streaming') && (
+            <div className="text-xs text-zinc-400">Thinking…</div>
           )}
 
-          {error && <div className="text-red-600">{error.message}</div>}
+          {(error || notice) && (
+            <div className="text-red-600">{notice ?? error?.message}</div>
+          )}
         </div>
 
         {/* Always shown, so follow-up questions can be asked */}

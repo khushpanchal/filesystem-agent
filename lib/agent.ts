@@ -1,13 +1,14 @@
-import { ToolLoopAgent } from 'ai';
+import { ToolLoopAgent, type LanguageModel } from 'ai';
 import { INSTRUCTIONS } from './instructions';
 import { bashTool } from './tools';
 
-const MODEL = 'minimax/minimax-m3.1-flash';
-
-export const agent = new ToolLoopAgent({
-  model: MODEL,
-  instructions: INSTRUCTIONS,
-  tools: {
-    bashTool
-  }
-});
+// A new agent for every request, with that user's model and key
+export function createAgent(model: LanguageModel) {
+  return new ToolLoopAgent({
+    model,
+    instructions: INSTRUCTIONS,
+    tools: {
+      bashTool
+    }
+  });
+}

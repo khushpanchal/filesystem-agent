@@ -1,0 +1,43 @@
+export type Provider = 'google' | 'openai' | 'anthropic';
+
+export type Settings = { provider: Provider; apiKey: string; modelId: string };
+
+// Default models: cheap, fast, good at tool calls (checked 2026-10-25).
+// Google: 3.8/3.7-flash were overloaded (no answer in 40 s); 3.5-flash-lite
+// answered the sample questions in 6-8 s with 1-2 commands.
+export const PROVIDERS: Record<
+  Provider,
+  { label: string; defaultModel: string; keyUrl: string }
+> = {
+  google: {
+    label: 'Google',
+    defaultModel: 'gemini-3.5-flash-lite',
+    keyUrl: 'https://aistudio.google.com/apikey'
+  },
+  openai: {
+    label: 'OpenAI',
+    defaultModel: 'gpt-6-luna',
+    keyUrl: 'https://platform.openai.com/api-keys'
+  },
+  anthropic: {
+    label: 'Anthropic',
+    defaultModel: 'claude-haiku-5-5',
+    keyUrl: 'https://platform.claude.com/settings/keys'
+  }
+};
+
+const STORAGE_KEY = 'ask-your-docs-settings';
+
+// Browser only (localStorage). Returns null if nothing is saved.
+export function loadSettings(): Settings | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as Settings) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveSettings(settings: Settings) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+}

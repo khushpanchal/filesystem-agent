@@ -96,7 +96,7 @@ export function FilesPanel() {
   };
 
   return (
-    <div className="space-y-4 p-4 font-mono text-sm">
+    <div className="space-y-4 pt-2 font-mono text-sm">
       <div className="flex items-center justify-between">
         <div className="text-xs font-bold uppercase">Files</div>
         {files.length > 0 && (
